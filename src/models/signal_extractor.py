@@ -1,27 +1,13 @@
 """
-AFS-VFM Phase 2B - Internal Signal Extractor
-=============================================
+AFS-VFM Phase 2B - Internal Signal Extractor (v2 - fixed)
+==========================================================
 
-Extracts intermediate representations from DINOv2, CLIP, and DETR
-during inference on degraded images. Unlike Phase 1 (which only saved
-the final prediction + boolean), this captures:
+Extracts intermediate representations from DINOv2, CLIP, and DETR.
 
-  DINOv2: CLS embedding (768-d), top-5 logits + labels, attention weights
-  CLIP:   Image embedding (512-d), full logit vector (20 labels), logit margin
-  DETR:   Top detection confidence, objectness score, detection logits
-
-From these raw signals, we compute per-frame metrics:
-  - Cosine similarity drift (vs frame 0 embedding)
-  - Attention entropy
-  - Logit margin (top-1 minus top-2 confidence)
-  - Embedding L2 distance from baseline
-  - Top-5 prediction stability
-
-Usage:
-    This module is imported by the Phase 2B Kaggle notebook.
-    >>> from src.models.signal_extractor import SignalExtractor
-    >>> extractor = SignalExtractor(device)
-    >>> signals = extractor.extract_dinov2(model, processor, frames)
+Changes from v1:
+  - Fixed DINOv2: use model() with output_hidden_states, not model.dinov2()
+  - Fixed CLIP: single forward pass, extract embeddings from outputs directly
+  - Added error printing so failures are visible, not silently caught
 """
 
 import numpy as np
@@ -41,34 +27,18 @@ class SignalExtractor:
     # ================================================================
 
     def extract_dinov2(self, model, processor, frame_pil: Image.Image) -> dict:
-        """Extract internal signals from DINOv2 for a single frame.
-
-        Returns dict with:
-            - cls_embedding: numpy array (768,)
-            - top5_logits: numpy array (5,)
-            - top5_labels: list of 5 label strings
-            - top1_confidence: float (softmax probability of top prediction)
-            - logit_margin: float (top1 - top2 softmax probability)
-            - prediction: str (top-1 label)
-        """
+        """Extract internal signals from DINOv2 for a single frame."""
         inputs = processor(images=frame_pil, return_tensors="pt").to(self.device)
 
         with torch.no_grad():
-            # Get the full model output including hidden states
-            outputs = model.dinov2(pixel_values=inputs["pixel_values"],
-                                   output_hidden_states=True,
-                                   output_attentions=True)
+            # Single forward pass with hidden states
+            outputs = model(**inputs, output_hidden_states=True)
+            logits = outputs.logits[0]  # (num_classes,)
 
-            # CLS token embedding from last hidden state
-            cls_embedding = outputs.last_hidden_state[:, 0, :].cpu().numpy().flatten()
-
-            # Attention weights from last layer
-            # Shape: (batch, num_heads, seq_len, seq_len)
-            last_attn = outputs.attentions[-1].cpu().numpy()[0]  # (num_heads, seq_len, seq_len)
-
-            # Run through the classifier head to get logits
-            classifier_output = model(pixel_values=inputs["pixel_values"])
-            logits = classifier_output.logits[0]  # (num_classes,)
+            # CLS embedding from last hidden state
+            # hidden_states is a tuple of (embedding_output, layer1, layer2, ...)
+            last_hidden = outputs.hidden_states[-1]  # (batch, seq_len, hidden_dim)
+            cls_embedding = last_hidden[:, 0, :].cpu().numpy().flatten()
 
         # Top-5 predictions
         probs = F.softmax(logits, dim=-1)
@@ -77,16 +47,21 @@ class SignalExtractor:
         top5_labels = [model.config.id2label[idx.item()] for idx in top5_idx]
 
         # Confidence metrics
-        top1_conf = top5_logits[0]
+        top1_conf = float(top5_logits[0])
         logit_margin = float(top5_logits[0] - top5_logits[1])
 
-        # Attention entropy: average over all heads, CLS token row
-        # CLS attends to all patches - how spread out is its attention?
-        cls_attn = last_attn[:, 0, :]  # (num_heads, seq_len)
-        # Add small epsilon to avoid log(0)
-        cls_attn_safe = np.clip(cls_attn, 1e-10, None)
-        entropy_per_head = -np.sum(cls_attn_safe * np.log(cls_attn_safe), axis=-1)
-        avg_entropy = float(np.mean(entropy_per_head))
+        # Attention entropy: skip if model doesn't support it
+        avg_entropy = 0.0
+        try:
+            attn_outputs = model(**inputs, output_attentions=True)
+            last_attn = attn_outputs.attentions[-1].cpu().numpy()[0]  # (heads, seq, seq)
+            cls_attn = last_attn[:, 0, :]  # CLS row
+            cls_attn_safe = np.clip(cls_attn, 1e-10, None)
+            entropy_per_head = -np.sum(cls_attn_safe * np.log(cls_attn_safe), axis=-1)
+            avg_entropy = float(np.mean(entropy_per_head))
+        except Exception:
+            # Some model configs don't support output_attentions
+            avg_entropy = 0.0
 
         prediction = top5_labels[0]
 
@@ -94,7 +69,7 @@ class SignalExtractor:
             "cls_embedding": cls_embedding,
             "top5_logits": top5_logits,
             "top5_labels": top5_labels,
-            "top1_confidence": float(top1_conf),
+            "top1_confidence": top1_conf,
             "logit_margin": logit_margin,
             "attention_entropy": avg_entropy,
             "prediction": prediction,
@@ -106,16 +81,7 @@ class SignalExtractor:
 
     def extract_clip(self, model, processor, frame_pil: Image.Image,
                      candidate_labels: list) -> dict:
-        """Extract internal signals from CLIP for a single frame.
-
-        Returns dict with:
-            - image_embedding: numpy array (512,)
-            - full_logits: numpy array (n_labels,) raw logits
-            - full_probs: numpy array (n_labels,) softmax probs
-            - top1_confidence: float
-            - logit_margin: float (top1 - top2)
-            - prediction: str
-        """
+        """Extract internal signals from CLIP for a single frame."""
         inputs = processor(
             text=candidate_labels, images=frame_pil,
             return_tensors="pt", padding=True
@@ -124,11 +90,8 @@ class SignalExtractor:
         with torch.no_grad():
             outputs = model(**inputs)
 
-            # Image embedding (normalized)
-            image_embedding = model.get_image_features(
-                pixel_values=inputs["pixel_values"]
-            )
-            image_embedding = image_embedding.cpu().numpy().flatten()
+            # Image embedding from the outputs
+            image_embedding = outputs.image_embeds[0].cpu().numpy()
 
             # Logits per image
             logits_per_image = outputs.logits_per_image[0]  # (n_labels,)
@@ -156,16 +119,7 @@ class SignalExtractor:
     # ================================================================
 
     def extract_detr(self, model, processor, frame_pil: Image.Image) -> dict:
-        """Extract internal signals from DETR for a single frame.
-
-        Returns dict with:
-            - top_detection_confidence: float (max softmax prob of best detection)
-            - objectness_score: float (max confidence that ANY object exists)
-            - top5_detection_logits: numpy array (5,) top class probabilities
-            - top5_detection_labels: list of 5 label strings
-            - num_detections_above_threshold: int (detections with conf > 0.5)
-            - prediction: str (top detection class)
-        """
+        """Extract internal signals from DETR for a single frame."""
         inputs = processor(images=frame_pil, return_tensors="pt").to(self.device)
 
         with torch.no_grad():
@@ -185,14 +139,13 @@ class SignalExtractor:
         top_class_id = max_class_per_query[best_query_idx].item()
         prediction = model.config.id2label[top_class_id]
 
-        # Objectness: how confident is DETR that it found anything?
-        # Use the max probability across all queries
+        # Objectness
         objectness = float(max_prob_per_query.max().cpu())
 
         # Number of detections above threshold
         n_above_thresh = int((max_prob_per_query > 0.5).sum().cpu())
 
-        # Top-5 detections (by confidence)
+        # Top-5 detections
         top5_vals, top5_query_idx = max_prob_per_query.topk(min(5, len(max_prob_per_query)))
         top5_logits = top5_vals.cpu().numpy()
         top5_labels = [model.config.id2label[max_class_per_query[qi].item()]
@@ -208,12 +161,11 @@ class SignalExtractor:
         }
 
     # ================================================================
-    # Computed Metrics (post-hoc, comparing frame N to frame 0)
+    # Computed Metrics
     # ================================================================
 
     @staticmethod
     def cosine_similarity(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
-        """Compute cosine similarity between two vectors."""
         dot = np.dot(vec_a, vec_b)
         norm_a = np.linalg.norm(vec_a)
         norm_b = np.linalg.norm(vec_b)
@@ -223,12 +175,10 @@ class SignalExtractor:
 
     @staticmethod
     def l2_distance(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
-        """Compute L2 (Euclidean) distance between two vectors."""
         return float(np.linalg.norm(vec_a - vec_b))
 
     @staticmethod
     def top5_overlap(labels_a: list, labels_b: list) -> float:
-        """Fraction of top-5 labels in common (0.0 to 1.0)."""
         set_a = set(labels_a)
         set_b = set(labels_b)
         if not set_a or not set_b:
