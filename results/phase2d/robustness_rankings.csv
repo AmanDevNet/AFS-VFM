@@ -1,0 +1,16 @@
+degradation,model,survival_rate,mean_failure_frame,median_failure_frame,fragility_score,rank
+blur,dinov2,35.8,9.45,9.0,0.5274,1
+blur,clip,34.9,7.28,6.0,0.6358,2
+blur,detr,9.5,6.64,5.0,0.6678,3
+lighting,dinov2,42.9,9.55,10.0,0.5227,1
+lighting,clip,30.1,8.16,8.0,0.5918,2
+lighting,detr,23.8,8.09,8.0,0.5956,3
+occlusion,dinov2,51.3,12.17,12.5,0.3914,1
+occlusion,clip,24.1,9.95,10.0,0.5025,2
+occlusion,detr,14.4,10.41,11.0,0.4794,3
+scale,clip,3.7,14.54,17.0,0.273,1
+scale,dinov2,0.1,15.67,18.0,0.2167,2
+scale,detr,0.0,9.05,9.5,0.5473,3
+viewpoint,dinov2,39.5,11.95,14.0,0.4026,1
+viewpoint,detr,34.7,9.34,7.0,0.5332,2
+viewpoint,clip,24.0,10.12,9.0,0.4939,3

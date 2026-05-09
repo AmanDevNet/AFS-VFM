@@ -28,7 +28,7 @@ data/sample_dog.jpg
 *.safetensors
 
 # Results (generated, not tracked)
-results/
+# results/ (Commented out to track Phase 2/3 results)
 
 # OS files
 .DS_Store

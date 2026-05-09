@@ -1,0 +1,90 @@
+======================================================================
+AFS-VFM -- Phase 2A: Failure Boundary Analysis Report
+======================================================================
+
+--- OVERALL SUMMARY ---
+  Total (image, degradation, model) triplets: 22,500
+  Survived all 20 frames: 5,534 (24.6%)
+  Had at least one failure: 16,966 (75.4%)
+
+--- PER-MODEL SURVIVAL RATE ---
+  DINOV2  : 2545/7500 survived (33.9% survival rate)
+  CLIP    : 1753/7500 survived (23.4% survival rate)
+  DETR    : 1236/7500 survived (16.5% survival rate)
+
+--- FAILURE STATISTICS (model × degradation) ---
+  Model    Degradation  FailRate% MeanFrame  MedianFr   StdFr Fragility Survived%
+  --------------------------------------------------------------------------------
+  dinov2   blur             64.2%       9.4       9.0     5.7     0.527     35.8%
+  dinov2   lighting         57.1%       9.6      10.0     4.1     0.523     42.9%
+  dinov2   occlusion        48.7%      12.2      12.5     5.6     0.391     51.3%
+  dinov2   scale            99.9%      15.7      18.0     5.4     0.217      0.1%
+  dinov2   viewpoint        60.5%      11.9      14.0     6.7     0.403     39.5%
+  clip     blur             65.1%       7.3       6.0     5.0     0.636     34.9%
+  clip     lighting         69.9%       8.2       8.0     4.2     0.592     30.1%
+  clip     occlusion        75.9%       9.9      10.0     5.4     0.503     24.1%
+  clip     scale            96.3%      14.5      17.0     6.1     0.273      3.7%
+  clip     viewpoint        76.0%      10.1       9.0     6.3     0.494     24.0%
+  detr     blur             90.5%       6.6       5.0     4.9     0.668      9.5%
+  detr     lighting         76.2%       8.1       8.0     4.4     0.596     23.8%
+  detr     occlusion        85.6%      10.4      11.0     4.8     0.479     14.4%
+  detr     scale           100.0%       9.1       9.5     5.0     0.547      0.0%
+  detr     viewpoint        65.3%       9.3       7.0     6.7     0.533     34.7%
+
+--- KEY FINDINGS ---
+  Most fragile:  DETR under blur (fragility=0.668, mean failure at frame 6.6)
+  Most robust:   DINOV2 under scale (fragility=0.217, mean failure at frame 15.7)
+
+--- ROBUSTNESS RANKING (by mean failure frame, higher = more robust) ---
+  blur        : DINOV2(fr=9.4) > CLIP(fr=7.3) > DETR(fr=6.6)
+  lighting    : DINOV2(fr=9.6) > CLIP(fr=8.2) > DETR(fr=8.1)
+  occlusion   : DINOV2(fr=12.2) > DETR(fr=10.4) > CLIP(fr=9.9)
+  scale       : DINOV2(fr=15.7) > CLIP(fr=14.5) > DETR(fr=9.1)
+  viewpoint   : DINOV2(fr=11.9) > CLIP(fr=10.1) > DETR(fr=9.3)
+
+--- STATISTICAL SIGNIFICANCE (Bonferroni-corrected) ---
+  blur         Kruskal-Wallis H=159.08, p=2.85e-35 ***
+  lighting     Kruskal-Wallis H=73.80, p=9.41e-17 ***
+  occlusion    Kruskal-Wallis H=78.29, p=9.99e-18 ***
+  scale        Kruskal-Wallis H=1192.80, p=9.69e-260 ***
+  viewpoint    Kruskal-Wallis H=78.36, p=9.66e-18 ***
+
+  Pairwise Mann-Whitney U (significant only):
+    blur         dinov2_vs_clip       p_corrected=0.0000, d=0.403 (small)
+    blur         dinov2_vs_detr       p_corrected=0.0000, d=0.536 (medium)
+    blur         clip_vs_detr         p_corrected=0.0006, d=0.129 (negligible)
+    lighting     dinov2_vs_clip       p_corrected=0.0000, d=0.334 (small)
+    lighting     dinov2_vs_detr       p_corrected=0.0000, d=0.342 (small)
+    occlusion    dinov2_vs_clip       p_corrected=0.0000, d=0.408 (small)
+    occlusion    dinov2_vs_detr       p_corrected=0.0000, d=0.344 (small)
+    occlusion    clip_vs_detr         p_corrected=0.0075, d=0.091 (negligible)
+    scale        dinov2_vs_clip       p_corrected=0.0001, d=0.196 (negligible)
+    scale        dinov2_vs_detr       p_corrected=0.0000, d=1.274 (large)
+    scale        clip_vs_detr         p_corrected=0.0000, d=0.994 (large)
+    viewpoint    dinov2_vs_clip       p_corrected=0.0000, d=0.283 (small)
+    viewpoint    dinov2_vs_detr       p_corrected=0.0000, d=0.391 (small)
+    viewpoint    clip_vs_detr         p_corrected=0.0008, d=0.121 (negligible)
+
+--- TOP HALLUCINATION ATTRACTORS (most common failure predictions) ---
+  DINOV2:
+    'paddle, boat paddle' -> 'seashore, coast, seacoast, sea-coast' (126 times)
+    'desk' -> 'monitor' (112 times)
+    'bell cote, bell cot' -> 'chime, bell, gong' (105 times)
+    'cassette player' -> 'tape player' (98 times)
+    'dishwasher, dish washer, dishwashing machine' -> 'microwave, microwave oven' (96 times)
+  CLIP:
+    'a chair' -> 'a person' (1361 times)
+    'a traffic scene' -> 'a horse' (957 times)
+    'fruit' -> 'a tree' (782 times)
+    'a dog' -> 'a cat' (719 times)
+    'a chair' -> 'a clock' (622 times)
+  DETR:
+    'person' -> 'toilet' (952 times)
+    'person' -> 'tv' (769 times)
+    'dog' -> 'cat' (695 times)
+    'dog' -> 'person' (533 times)
+    'person' -> 'train' (498 times)
+
+======================================================================
+End of Phase 2A Report
+======================================================================

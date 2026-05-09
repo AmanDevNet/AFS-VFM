@@ -1,0 +1,4 @@
+model,best_auroc,avg_negative_trend_pct,avg_lead_time_frames,earliest_divergence_frame,self_awareness_score,rank
+dinov2,0.773,89.0,4.4,1,0.861,1
+clip,0.822,82.3,4.1,1,0.861,2
+detr,0.816,68.5,3.4,20,0.532,3

@@ -1,0 +1,87 @@
+======================================================================
+AFS-VFM -- Phase 2C: Anticipatory Signal Detection Report
+======================================================================
+
+CORE HYPOTHESIS: Internal model signals degrade measurably
+BEFORE the final prediction changes.
+
+--- VERDICT ---
+  HYPOTHESIS SUPPORTED: 83.2% of pre-failure windows show
+  negative signal trends across all models and signals.
+  Average AUROC for failure prediction: 0.700
+  Internal representations DO anticipate failure.
+
+--- PRE-FAILURE SIGNAL TRENDS (negative = signal drops before failure) ---
+
+  DINOV2:
+    cosine_sim               : mean_slope=-0.045132, 97% negative
+    l2_distance              : mean_slope=3.318789, 3% negative
+    logit_margin             : mean_slope=-0.072805, 85% negative
+    top1_confidence          : mean_slope=-0.053716, 85% negative
+    top5_overlap             : mean_slope=-0.043310, 63% negative
+
+  CLIP:
+    cosine_sim               : mean_slope=-0.023469, 96% negative
+    l2_distance              : mean_slope=0.068534, 4% negative
+    logit_margin             : mean_slope=-0.046196, 76% negative
+    top1_confidence          : mean_slope=-0.034579, 75% negative
+
+  DETR:
+    objectness               : mean_slope=-0.002674, 69% negative
+    top_detection_confidence : mean_slope=-0.002674, 69% negative
+
+--- SURVIVED vs FAILED: WHEN DO THEY DIVERGE? ---
+  DINOV2: significant divergence at frame 2 (d=0.315, p=1.98e-10)
+  CLIP: significant divergence at frame 5 (d=-0.126, p=2.45e-02)
+  DETR: no significant divergence detected
+
+--- PREDICTABILITY METRICS ---
+  Model    Signal                      AUROC Lead(fr)   Neg%    SNR
+  -----------------------------------------------------------------
+  DINOV2   cosine_sim                  0.519      4.8    97%  1.087
+  DINOV2   top1_confidence             0.773      4.2    85%  0.891
+  DINOV2   logit_margin                0.771      4.2    85%  0.861
+  CLIP     cosine_sim                  0.380      4.8    96%  1.102
+  CLIP     top1_confidence             0.817      3.8    75%  0.663
+  CLIP     logit_margin                0.822      3.8    76%  0.676
+  DETR     top_detection_confidence    0.816      3.4    69%  0.121
+
+--- SIGNAL TRAJECTORY AROUND FAILURE POINT ---
+  (relative_frame: -5=five frames before failure, 0=at failure)
+
+  DINOV2 cosine_sim:
+    frame  -5: 0.9021 +/- 0.1201
+    frame  -4: 0.8823 +/- 0.1300
+    frame  -3: 0.8548 +/- 0.1450
+    frame  -2: 0.8121 +/- 0.1698
+    frame  -1: 0.7338 +/- 0.2135
+    frame  +0: 0.5798 +/- 0.2900 <<<
+    frame  +1: 0.5565 +/- 0.3224
+    frame  +2: 0.5711 +/- 0.3192
+    frame  +3: 0.6202 +/- 0.2789
+
+  CLIP cosine_sim:
+    frame  -5: 0.9249 +/- 0.0742
+    frame  -4: 0.9150 +/- 0.0786
+    frame  -3: 0.8990 +/- 0.0892
+    frame  -2: 0.8808 +/- 0.1037
+    frame  -1: 0.8638 +/- 0.1222
+    frame  +0: 0.8099 +/- 0.1532 <<<
+    frame  +1: 0.8170 +/- 0.1425
+    frame  +2: 0.8099 +/- 0.1399
+    frame  +3: 0.8092 +/- 0.1278
+
+  DETR cosine_sim:
+    frame  -5: nan +/- nan
+    frame  -4: nan +/- nan
+    frame  -3: nan +/- nan
+    frame  -2: nan +/- nan
+    frame  -1: nan +/- nan
+    frame  +0: nan +/- nan <<<
+    frame  +1: nan +/- nan
+    frame  +2: nan +/- nan
+    frame  +3: nan +/- nan
+
+======================================================================
+End of Phase 2C Report
+======================================================================

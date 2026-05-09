@@ -1,0 +1,4 @@
+model,backbone,training_paradigm,task_type,overall_survival_pct,mean_failure_frame,best_auroc,best_predictive_signal,avg_negative_trend_pct,most_fragile_degradation,most_fragile_score,most_robust_degradation,most_robust_score
+dinov2,ViT-B/14,Self-supervised,Classification,33.9,12.21,0.773,top1_confidence,89.0,blur,0.527,scale,0.217
+clip,ViT-B/32,Contrastive,Zero-shot classification,23.4,10.36,0.822,logit_margin,82.3,blur,0.636,scale,0.273
+detr,ResNet-50 + Transformer,Supervised,Object detection,16.5,8.68,0.816,top_detection_confidence,68.5,blur,0.668,occlusion,0.479

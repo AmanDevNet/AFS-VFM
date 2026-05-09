@@ -1,0 +1,16 @@
+degradation,model_pair,model_1,model_2,model_1_failures,model_2_failures,shared_failures,jaccard_similarity,overlap_pct
+blur,dinov2_vs_clip,dinov2,clip,963,977,665,0.5216,69.1
+blur,dinov2_vs_detr,dinov2,detr,963,1357,881,0.6122,91.5
+blur,clip_vs_detr,clip,detr,977,1357,912,0.6414,93.3
+lighting,dinov2_vs_clip,dinov2,clip,856,1048,627,0.491,73.2
+lighting,dinov2_vs_detr,dinov2,detr,856,1143,673,0.5075,78.6
+lighting,clip_vs_detr,clip,detr,1048,1143,859,0.6449,82.0
+occlusion,dinov2_vs_clip,dinov2,clip,730,1138,589,0.4605,80.7
+occlusion,dinov2_vs_detr,dinov2,detr,730,1284,623,0.4479,85.3
+occlusion,clip_vs_detr,clip,detr,1138,1284,1008,0.7129,88.6
+scale,dinov2_vs_clip,dinov2,clip,1499,1444,1443,0.962,99.9
+scale,dinov2_vs_detr,dinov2,detr,1499,1500,1499,0.9993,100.0
+scale,clip_vs_detr,clip,detr,1444,1500,1444,0.9627,100.0
+viewpoint,dinov2_vs_clip,dinov2,clip,907,1140,736,0.5614,81.1
+viewpoint,dinov2_vs_detr,dinov2,detr,907,980,610,0.4777,67.3
+viewpoint,clip_vs_detr,clip,detr,1140,980,802,0.6085,81.8

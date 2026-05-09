@@ -1,0 +1,375 @@
+baseline_prediction,failure_prediction,count
+a chair,a person,1361
+a traffic scene,a horse,957
+fruit,a tree,782
+a dog,a cat,719
+a chair,a clock,622
+fruit,a flower,615
+a clock,a chair,582
+fruit,a person,577
+a bottle,a person,574
+fruit,a bird,541
+a traffic scene,a person,540
+a person,a chair,528
+a dog,a horse,521
+a coffee cup,a person,502
+a dog,a person,467
+fruit,a chair,450
+a traffic scene,a clock,444
+fruit,a coffee cup,423
+a boat,a person,422
+a coffee cup,a chair,408
+a chair,a traffic scene,405
+a coffee cup,a clock,395
+a clock,a person,388
+a chair,a train,336
+a boat,a clock,329
+a bottle,a coffee cup,323
+a truck,a person,322
+a person,a boat,313
+a horse,a person,301
+a coffee cup,a bottle,288
+a truck,a clock,283
+fruit,a bottle,282
+a boat,fruit,281
+a person,a bottle,279
+a boat,a chair,273
+a traffic scene,a train,272
+a bird,a tree,271
+a bird,a person,271
+a cat,a person,271
+a bottle,a chair,271
+a cat,a dog,270
+a chair,a boat,266
+a traffic scene,a boat,255
+a train,a traffic scene,247
+a coffee cup,fruit,245
+a person,a clock,244
+fruit,a clock,242
+fruit,a boat,237
+a dog,a chair,235
+a clock,a train,235
+a tree,a person,235
+a clock,a bottle,234
+a dog,a bird,233
+a bird,a horse,232
+a bird,fruit,229
+a traffic scene,a car,229
+a bottle,a clock,228
+a boat,a coffee cup,224
+a bottle,a bird,221
+a chair,a coffee cup,221
+a flower,a bird,214
+a bottle,fruit,204
+a truck,a train,202
+fruit,a dog,201
+a traffic scene,a bicycle,200
+a chair,a bicycle,194
+a bird,a dog,193
+a boat,a traffic scene,193
+a bicycle,a clock,189
+a clock,a boat,189
+fruit,a horse,187
+a clock,a traffic scene,185
+fruit,a cat,185
+a clock,a coffee cup,184
+a truck,a bus,183
+a train,a clock,181
+a traffic scene,a bird,179
+a flower,a chair,178
+a bird,a boat,177
+a person,a train,173
+a truck,a chair,172
+a chair,a car,172
+a bicycle,a chair,169
+a bicycle,a person,169
+a flower,a clock,169
+a train,a bus,163
+a chair,a truck,163
+a flower,fruit,162
+a horse,a clock,159
+a traffic scene,a dog,158
+a clock,a car,158
+a boat,a bottle,157
+a bottle,a traffic scene,154
+a boat,a train,152
+a chair,a bottle,150
+a truck,a traffic scene,148
+a bird,a cat,146
+a chair,a bird,146
+a traffic scene,a truck,146
+a chair,a horse,146
+fruit,a train,145
+a chair,a tree,145
+a clock,a truck,142
+a bicycle,a car,140
+a bird,a chair,140
+a truck,a car,138
+a boat,a bird,136
+a bus,a traffic scene,135
+a bird,a clock,134
+a person,a truck,134
+a bird,a flower,133
+a bottle,a boat,133
+a person,a bird,132
+a train,a person,132
+a boat,a car,129
+a chair,an airplane,129
+a truck,a boat,127
+a bicycle,a bird,126
+a horse,a dog,125
+a tree,a chair,125
+an airplane,a clock,124
+a tree,a clock,122
+a bicycle,a bottle,122
+a bottle,a car,122
+a person,a coffee cup,121
+a car,a bottle,120
+a traffic scene,a cat,120
+a chair,a bus,119
+a person,a traffic scene,119
+a truck,a horse,119
+a chair,a dog,118
+a traffic scene,a tree,118
+a bottle,a horse,115
+a dog,fruit,114
+fruit,a truck,113
+a truck,a coffee cup,113
+a coffee cup,a car,112
+a bus,a train,112
+a person,an airplane,109
+a dog,a tree,109
+a person,fruit,107
+an airplane,a train,106
+a cat,a chair,105
+a car,a clock,105
+an airplane,a boat,104
+a person,a horse,103
+an airplane,a chair,103
+a bottle,a train,101
+a train,a tree,101
+a boat,an airplane,99
+a person,a bicycle,98
+a coffee cup,a flower,98
+a truck,fruit,98
+a clock,a tree,98
+a bird,a bottle,97
+a tree,fruit,97
+a boat,a dog,97
+a traffic scene,an airplane,96
+a flower,a bottle,96
+a traffic scene,a bus,95
+a person,a tree,95
+a coffee cup,a dog,94
+a flower,a person,94
+a boat,a horse,94
+a truck,a dog,93
+a cat,a bird,93
+an airplane,a person,92
+fruit,a traffic scene,91
+a train,a boat,90
+a coffee cup,a boat,89
+a person,a car,88
+a bird,an airplane,87
+a tree,a bird,86
+an airplane,a traffic scene,85
+a coffee cup,a bird,85
+a horse,a bird,83
+a horse,a chair,83
+a bird,a coffee cup,83
+a truck,a bottle,82
+a boat,a tree,82
+a tree,a traffic scene,82
+a clock,a bus,81
+a traffic scene,a chair,81
+an airplane,a car,80
+an airplane,a bird,80
+a dog,a traffic scene,78
+a car,a truck,78
+a traffic scene,a bottle,77
+a horse,a tree,77
+a train,a chair,76
+a bird,a truck,75
+a bird,a train,75
+a train,fruit,75
+an airplane,a truck,74
+a horse,a cat,73
+a bottle,a bicycle,73
+a coffee cup,a train,73
+fruit,a car,71
+a bottle,a cat,71
+a clock,a horse,71
+a dog,a car,71
+a person,a dog,70
+a bus,a chair,70
+a tree,a train,69
+a flower,a tree,69
+a bottle,a tree,69
+a bus,an airplane,68
+a truck,a bicycle,68
+a bicycle,a truck,67
+a chair,a flower,66
+an airplane,a coffee cup,65
+a car,a person,65
+a boat,a flower,64
+a dog,a boat,64
+a boat,a bicycle,63
+a bottle,a dog,62
+a car,an airplane,61
+a horse,a traffic scene,60
+a tree,a bicycle,60
+a bicycle,a train,60
+a tree,a boat,59
+a clock,a bicycle,57
+a bicycle,a traffic scene,57
+a horse,a boat,56
+a clock,an airplane,56
+a boat,a truck,56
+a tree,a horse,56
+a chair,a cat,55
+fruit,a bicycle,55
+a coffee cup,a horse,54
+a dog,a train,54
+a dog,a bottle,52
+a person,a cat,51
+a cat,a horse,51
+a traffic scene,a coffee cup,50
+a clock,fruit,49
+a clock,a flower,49
+a dog,a truck,49
+a tree,a bottle,49
+a bus,a clock,49
+a bird,a car,48
+a cat,a tree,48
+a train,a car,48
+a train,an airplane,48
+a tree,a cat,47
+a bottle,a truck,47
+an airplane,a bottle,46
+a horse,fruit,45
+a cat,a car,45
+a bicycle,a tree,44
+a horse,a bottle,44
+a car,a train,44
+a flower,a bicycle,43
+a train,a truck,42
+a dog,a coffee cup,42
+a train,a bicycle,41
+a flower,a car,40
+a truck,a bird,40
+a person,a bus,40
+a person,a flower,39
+a traffic scene,fruit,39
+a bicycle,fruit,39
+a bicycle,a bus,39
+a cat,a clock,39
+an airplane,a bicycle,38
+a cat,a traffic scene,38
+a tree,a flower,37
+a traffic scene,a flower,37
+a bird,a bicycle,36
+a coffee cup,an airplane,36
+a train,a horse,36
+a horse,a train,35
+a tree,a truck,35
+a bicycle,a horse,35
+a bottle,an airplane,35
+a dog,a clock,34
+a clock,a bird,34
+a horse,a truck,33
+fruit,an airplane,33
+a train,a coffee cup,31
+a car,a bus,31
+an airplane,a tree,30
+a car,a boat,30
+a bus,a car,29
+a cat,a train,29
+a cat,a bottle,29
+a clock,a cat,28
+a horse,a flower,28
+a horse,a coffee cup,27
+a car,a chair,27
+a flower,a coffee cup,27
+a flower,a horse,26
+a coffee cup,a traffic scene,25
+a bicycle,a boat,24
+a bird,a traffic scene,24
+a coffee cup,a bus,24
+a flower,a cat,24
+a coffee cup,a cat,24
+a bus,a truck,24
+a tree,an airplane,24
+a car,a traffic scene,24
+a tree,a dog,23
+a truck,an airplane,23
+a bicycle,a coffee cup,23
+a car,a coffee cup,22
+a dog,an airplane,22
+a dog,a bus,22
+an airplane,a bus,22
+a bus,a flower,21
+a bus,a bottle,21
+a bicycle,an airplane,20
+a coffee cup,a bicycle,20
+a coffee cup,a tree,19
+a flower,a boat,19
+a clock,a dog,18
+a bus,a boat,18
+a horse,a car,18
+an airplane,a horse,17
+a bicycle,a dog,16
+a horse,an airplane,16
+a flower,a traffic scene,16
+a horse,a bicycle,16
+a flower,a dog,14
+an airplane,a flower,14
+a truck,a tree,14
+a bottle,a flower,14
+a cat,a boat,14
+a car,a bicycle,13
+a train,a bird,13
+a coffee cup,a truck,13
+a truck,a cat,13
+a train,a bottle,13
+a train,a flower,13
+a bus,a person,12
+a bus,a bird,12
+a car,fruit,11
+a boat,a cat,11
+a bus,a bicycle,11
+a bicycle,a cat,10
+a boat,a bus,10
+a truck,a flower,10
+a chair,fruit,9
+a bus,a coffee cup,9
+a train,a dog,9
+a dog,a flower,9
+a cat,an airplane,8
+a cat,a bicycle,8
+a cat,a flower,8
+a dog,a bicycle,8
+an airplane,fruit,7
+a bottle,a bus,7
+a tree,a coffee cup,7
+a tree,a bus,7
+a bus,a tree,7
+a bicycle,a flower,6
+a cat,a truck,6
+a car,a dog,6
+an airplane,a cat,5
+a horse,a bus,5
+a car,a bird,5
+fruit,a bus,5
+a flower,a train,5
+a tree,a car,4
+a bird,a bus,4
+a cat,a coffee cup,4
+a flower,an airplane,4
+an airplane,a dog,3
+a cat,fruit,3
+a car,a cat,3
+a train,a cat,2
+a bus,a cat,2
+a car,a tree,2
+a car,a horse,1
+a bus,fruit,1
