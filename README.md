@@ -16,7 +16,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org)
 [![HuggingFace](https://img.shields.io/badge/HuggingFace-Transformers-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Phase%201%20Complete%20(~40%25)-blue)]()
+[![Status](https://img.shields.io/badge/Status-Phase%202%20Complete%20(~80%25)-blue)]()
 
 <br/>
 
@@ -186,14 +186,25 @@ From our initial single-feature integration test:
 
 > **Key Insight**: DINOv2 failed at just **5% degradation intensity** under motion blur — indicating extreme sensitivity to high-frequency spatial features. The model didn't gradually lose confidence; it **snapped** to a completely wrong class almost immediately.
 
+### Phase 2 — Statistical Analysis & Failure Mapping: ✅ Complete
+
+We extracted **90,000 internal brain signals** (logits, embeddings, confidence scores) and calculated exact failure boundaries across all models.
+
+#### Breakthrough Discoveries
+
+1. **DINOv2 is the Most Robust:** Across all 5 degradation types, DINOv2 survived the longest (33.9% average survival), outperforming CLIP (23.4%) and DETR (16.5%).
+2. **Anticipatory Signals Exist (Hypothesis Proven):** We mathematically proved that internal model signals drop **3 to 5 frames BEFORE** the model's final prediction actually changes.
+3. **Failure is Predictable:** By analyzing specific internal metrics (like CLIP's logit margin), we can predict an upcoming AI failure with very high accuracy (AUROC = 0.822) frames before the failure occurs.
+
 ---
 
 ## 🗺 Project Roadmap
 
 ```
+```
 Phase 1 — Infrastructure & Data Generation ███████████████████████████████ 100%  ✅
-Phase 2 — Statistical Analysis & Failure Mapping ░░░░░░░░░░░░░░░░░░░░░░░  0%   🔜
-Phase 3 — Visualization Dashboard & Paper ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%   📋
+Phase 2 — Statistical Analysis & Failure Mapping ███████████████████████████████ 100%  ✅
+Phase 3 — Visualization Dashboard & Paper ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%   🔜
 ```
 
 | Phase | Milestone | Status | Description |
@@ -202,11 +213,12 @@ Phase 3 — Visualization Dashboard & Paper ░░░░░░░░░░░░
 | **1.2** | Model Loader | ✅ Complete | DINOv2, CLIP, DETR loading with auto-device detection |
 | **1.3** | Integration Test | ✅ Complete | End-to-end pipeline validation (Track A ↔ Track B) |
 | **1.4** | Full Benchmark Run | ✅ Complete | 150,000 inferences across 1,500 images on Kaggle T4 GPU |
-| **2.1** | Failure Boundary Analysis | 🔜 Next | Mathematical identification of per-model, per-degradation breaking points |
-| **2.2** | Cross-Model Comparison | 📋 Planned | Statistical comparison of failure patterns across DINOv2 / CLIP / DETR |
-| **2.3** | Internal Signal Probing | 📋 Planned | Embedding drift, attention entropy, logit margin analysis |
-| **3.1** | Interactive Dashboard | 📋 Planned | Visual exploration of failure curves and model comparisons |
-| **3.2** | Research Paper | 📋 Planned | Formal write-up of methodology, findings, and implications |
+| **2.1** | Failure Boundary Analysis | ✅ Complete | Mathematical identification of per-model, per-degradation breaking points |
+| **2.2** | Cross-Model Comparison | ✅ Complete | Statistical comparison of failure patterns across DINOv2 / CLIP / DETR |
+| **2.3** | Internal Signal Probing | ✅ Complete | Embedding drift, attention entropy, logit margin analysis |
+| **3.1** | Visualization & Dashboard | 🔜 Next | Publication-quality figure generation and failure curves |
+| **3.2** | Early Warning Prototype | 📋 Planned | Live monitoring system to warn of imminent AI failure |
+| **3.3** | Research Paper | 📋 Planned | Formal write-up of methodology, findings, and implications |
 
 ---
 
@@ -238,6 +250,11 @@ AFS-VFM/
 ├── week2_final_outcome.csv     # Week 2 milestone result — DINOv2 vs Motion Blur
 │
 ├── src/
+│   ├── analysis/               # Track C — Statistical Analysis (Phase 2)
+│   │   ├── anticipatory_signals.py
+│   │   ├── cross_model_comparison.py
+│   │   └── failure_boundaries.py
+│   │
 │   ├── degradation/            # Track A — Degradation Engine
 │   │   ├── __init__.py         # Public API exports
 │   │   ├── degradation.py      # DegradationPipeline class + orchestration
@@ -248,6 +265,9 @@ AFS-VFM/
 │       └── model_loader.py     # VisionModelLoader (DINOv2, CLIP, DETR)
 │
 ├── docs/                       # Research documentation
+│   ├── PHASE2_REPORT.md        # Comprehensive Phase 2 analytical report
+│   ├── PHASE3_PLAN.md          # Execution plan for Phase 3 deliverables
+│   ├── PROJECT_RECAP.md        # Plain-English project summary
 │   ├── combined_work_test.md   # Milestone 2 integration analysis
 │   ├── research_notes_phase1_week1_aman.md
 │   └── research_notes_phase1_week2_aman.md
@@ -256,7 +276,11 @@ AFS-VFM/
 │   ├── coco_val/               # 500 COCO validation images
 │   └── imagenet_val/           # 1,000 ImageNet validation images
 │
-└── results/                    # Benchmark outputs (generated, git-ignored)
+└── results/                    # Benchmark outputs and Phase 2 Analytics
+    ├── phase2a/                # Failure boundaries and statistics
+    ├── phase2b/                # Internal signals and subset data
+    ├── phase2c/                # Aligned anticipatory signals
+    ├── phase2d/                # Model comparison matrices
     └── full_benchmark.csv      # 150,000-row master dataset
 ```
 
@@ -367,7 +391,7 @@ If you find this work useful in your research, please consider citing:
 
 <div align="center">
 
-**🔬 Research in Progress — Phase 2 (Failure Analysis) coming soon.**
+**🔬 Research in Progress — Phase 3 (Visualization & Early Warning Prototype) currently underway.**
 
 *Built with curiosity, broken models, and too many GPU hours.*
 
