@@ -36,8 +36,6 @@
 - [Key Results So Far](#-key-results-so-far)
 - [Project Roadmap](#-project-roadmap)
 - [Tech Stack](#-tech-stack)
-- [Repository Structure](#-repository-structure)
-- [Getting Started](#-getting-started)
 - [Contributors](#-contributors)
 
 ---
@@ -200,8 +198,7 @@ We extracted **90,000 internal brain signals** (logits, embeddings, confidence s
 
 ## 🗺 Project Roadmap
 
-```
-```
+```text
 Phase 1 — Infrastructure & Data Generation ███████████████████████████████ 100%  ✅
 Phase 2 — Statistical Analysis & Failure Mapping ███████████████████████████████ 100%  ✅
 Phase 3 — Visualization Dashboard & Paper ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%   🔜
@@ -233,105 +230,6 @@ Phase 3 — Visualization Dashboard & Paper ░░░░░░░░░░░░
 | **Datasets** | COCO val2017, ImageNet-1k (via HuggingFace Datasets) |
 | **Compute** | Kaggle T4 GPU (free tier), Google Colab compatible |
 | **Version Control** | Git, GitHub (multi-contributor workflow with feature branches) |
-
----
-
-## 📂 Repository Structure
-
-```
-AFS-VFM/
-├── main.py                     # Master orchestration script — full benchmark pipeline
-├── download_dataset.py         # Automated dataset downloader (COCO + ImageNet)
-├── demo_visual.py              # Visual demo — generates degradation grid images
-├── run_combined_test.py        # Integration test (Track A ↔ Track B handshake)
-├── test_script.py              # Smoke tests for the degradation engine
-├── AFS_VFM_Benchmark.ipynb     # One-click Colab notebook for GPU benchmark execution
-├── requirements.txt            # Python dependencies
-├── week2_final_outcome.csv     # Week 2 milestone result — DINOv2 vs Motion Blur
-│
-├── src/
-│   ├── analysis/               # Track C — Statistical Analysis (Phase 2)
-│   │   ├── anticipatory_signals.py
-│   │   ├── cross_model_comparison.py
-│   │   └── failure_boundaries.py
-│   │
-│   ├── degradation/            # Track A — Degradation Engine
-│   │   ├── __init__.py         # Public API exports
-│   │   ├── degradation.py      # DegradationPipeline class + orchestration
-│   │   ├── transformations.py  # 5 degradation algorithm implementations
-│   │   └── utils.py            # Image I/O utilities
-│   │
-│   └── models/                 # Track B — Model Inference
-│       └── model_loader.py     # VisionModelLoader (DINOv2, CLIP, DETR)
-│
-├── docs/                       # Research documentation
-│   ├── PHASE2_REPORT.md        # Comprehensive Phase 2 analytical report
-│   ├── PHASE3_PLAN.md          # Execution plan for Phase 3 deliverables
-│   ├── PROJECT_RECAP.md        # Plain-English project summary
-│   ├── combined_work_test.md   # Milestone 2 integration analysis
-│   ├── research_notes_phase1_week1_aman.md
-│   └── research_notes_phase1_week2_aman.md
-│
-├── data/                       # Datasets (auto-downloaded, git-ignored)
-│   ├── coco_val/               # 500 COCO validation images
-│   └── imagenet_val/           # 1,000 ImageNet validation images
-│
-└── results/                    # Benchmark outputs and Phase 2 Analytics
-    ├── phase2a/                # Failure boundaries and statistics
-    ├── phase2b/                # Internal signals and subset data
-    ├── phase2c/                # Aligned anticipatory signals
-    ├── phase2d/                # Model comparison matrices
-    └── full_benchmark.csv      # 150,000-row master dataset
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Python 3.10 or higher
-- ~4 GB disk space for datasets
-- GPU recommended (CUDA-compatible) for the full benchmark; CPU works for demos and tests
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/AmanDevNet/AFS-VFM.git
-cd AFS-VFM
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate        # Linux/macOS
-venv\Scripts\activate           # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Quick Start
-
-```bash
-# 1. Run the degradation engine smoke test (no GPU needed)
-python test_script.py
-
-# 2. Generate visual demo grids for all 5 degradation types
-python demo_visual.py
-
-# 3. Download benchmark datasets (~1.5 GB)
-python download_dataset.py
-
-# 4. Run a quick pilot benchmark (~20 images)
-python main.py --pilot
-
-# 5. Run the full benchmark (1,500 images — GPU recommended)
-python main.py
-```
-
-### Running on Google Colab / Kaggle
-
-Open `AFS_VFM_Benchmark.ipynb` — it handles everything from cloning the repo to downloading datasets to running the full benchmark on a **free T4 GPU**.
 
 ---
 
