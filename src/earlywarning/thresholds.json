@@ -1,0 +1,57 @@
+{
+  "dinov2": {
+    "top1_confidence": {
+      "optimal_threshold": 0.985313,
+      "f1_at_optimal": 0.7697,
+      "warning_threshold": 0.569575,
+      "critical_threshold": 0.269963,
+      "n_samples": 19500
+    },
+    "logit_margin": {
+      "optimal_threshold": 0.9799,
+      "f1_at_optimal": 0.7698,
+      "warning_threshold": 0.359772,
+      "critical_threshold": 0.069419,
+      "n_samples": 19500
+    },
+    "cosine_sim": {
+      "optimal_threshold": 1.0,
+      "f1_at_optimal": 0.7555,
+      "warning_threshold": 0.86142,
+      "critical_threshold": 0.503998,
+      "n_samples": 19500
+    }
+  },
+  "clip": {
+    "top1_confidence": {
+      "optimal_threshold": 0.948961,
+      "f1_at_optimal": 0.8475,
+      "warning_threshold": 0.320809,
+      "critical_threshold": 0.208606,
+      "n_samples": 19500
+    },
+    "logit_margin": {
+      "optimal_threshold": 0.923954,
+      "f1_at_optimal": 0.8473,
+      "warning_threshold": 0.138389,
+      "critical_threshold": 0.037318,
+      "n_samples": 19500
+    },
+    "cosine_sim": {
+      "optimal_threshold": 1.0,
+      "f1_at_optimal": 0.8397,
+      "warning_threshold": 0.844395,
+      "critical_threshold": 0.696373,
+      "n_samples": 19500
+    }
+  },
+  "detr": {
+    "top_detection_confidence": {
+      "optimal_threshold": 0.999999,
+      "f1_at_optimal": 0.9226,
+      "warning_threshold": 0.992641,
+      "critical_threshold": 0.932219,
+      "n_samples": 19500
+    }
+  }
+}
