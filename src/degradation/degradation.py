@@ -16,6 +16,7 @@ import numpy as np
 
 from . import transformations
 from .utils import load_image
+from .scheduler import SeverityScheduler
 
 
 # ── Supported degradation type aliases ──────────────────────────────────────
@@ -39,6 +40,11 @@ class DegradationPipeline:
     ----------
     num_frames : int, optional
         Number of degradation steps in each sequence (default 20).
+    schedule : str, optional
+        Progression schedule name: 'linear', 'exponential', 'logarithmic',
+        'step_shock', or 'oscillatory' (default 'linear').
+    schedule_params : dict, optional
+        Parameters passed to the SeverityScheduler (e.g. gamma, shock_frame).
     """
 
     # Mapping from canonical degradation name → implementation function
@@ -50,8 +56,16 @@ class DegradationPipeline:
         "viewpoint": transformations.viewpoint,
     }
 
-    def __init__(self, num_frames: int = 20) -> None:
+    def __init__(
+        self,
+        num_frames: int = 20,
+        schedule: str = "linear",
+        schedule_params: dict = None,
+    ) -> None:
         self.num_frames = num_frames
+        self.schedule = schedule
+        self.schedule_params = schedule_params or {}
+        self.last_severities: np.ndarray = None
 
     # ── Thin wrapper methods (for discoverability / IDE hints) ──────────
 
@@ -86,19 +100,23 @@ class DegradationPipeline:
         self,
         image: np.ndarray,
         degradation_type: str,
+        schedule: str = None,
+        schedule_params: dict = None,
     ) -> np.ndarray:
         """Produce a sequence of *num_frames* degraded versions of *image*.
-
-        Severity increases linearly from frame 0 (mildest) to frame
-        ``num_frames - 1`` (most severe).
 
         Parameters
         ----------
         image : np.ndarray
             Source image in RGB uint8 format, shape (H, W, 3).
         degradation_type : str
-            Name of the degradation to apply.  Accepted values include
-            ``"blur"``, ``"motion_blur"``.
+            Name of the degradation to apply. Accepted values include
+            ``"blur"``, ``"motion_blur"``, ``"occlusion"``, etc.
+        schedule : str, optional
+            Progression schedule to use. If None, uses ``self.schedule``.
+        schedule_params : dict, optional
+            Additional schedule parameters (e.g. gamma, shock_frame).
+            If None, uses ``self.schedule_params``.
 
         Returns
         -------
@@ -108,7 +126,7 @@ class DegradationPipeline:
         Raises
         ------
         ValueError
-            If *degradation_type* is not recognised.
+            If *degradation_type* or *schedule* is not recognised.
         """
         canonical = _TYPE_ALIASES.get(degradation_type.lower())
         if canonical is None:
@@ -118,17 +136,22 @@ class DegradationPipeline:
                 f"Supported types: {supported}"
             )
 
+        eff_schedule = schedule if schedule is not None else self.schedule
+        eff_params = schedule_params if schedule_params is not None else self.schedule_params
+
+        severities = SeverityScheduler.get_schedule(
+            self.num_frames,
+            schedule=eff_schedule,
+            **eff_params
+        )
+        self.last_severities = severities
+
         transform_fn = self._TRANSFORMS[canonical]
         h, w = image.shape[:2]
         frames = np.empty((self.num_frames, h, w, 3), dtype=np.uint8)
 
         for i in range(self.num_frames):
-            # Guard against ZeroDivisionError when num_frames == 1
-            if self.num_frames == 1:
-                severity = 0.0
-            else:
-                severity = i / (self.num_frames - 1)  # 0.0 → 1.0 linearly
-            frames[i] = transform_fn(image, severity)
+            frames[i] = transform_fn(image, float(severities[i]))
 
         return frames
 
@@ -139,6 +162,8 @@ def generate_degradation_sequence(
     image_path: str,
     degradation_type: str,
     num_frames: int = 20,
+    schedule: str = "linear",
+    schedule_params: dict = None,
 ) -> np.ndarray:
     """Load an image and return a degradation sequence.
 
@@ -152,6 +177,11 @@ def generate_degradation_sequence(
         Kind of degradation (e.g. ``"blur"``).
     num_frames : int, optional
         Number of degradation steps (default 20).
+    schedule : str, optional
+        Progression schedule name ('linear', 'exponential', 'logarithmic',
+        'step_shock', or 'oscillatory'). Default is 'linear'.
+    schedule_params : dict, optional
+        Keyword parameters for the scheduler.
 
     Returns
     -------
@@ -159,5 +189,10 @@ def generate_degradation_sequence(
         Array of shape ``(num_frames, H, W, 3)`` with dtype ``uint8``.
     """
     image = load_image(image_path)
-    pipeline = DegradationPipeline(num_frames=num_frames)
+    pipeline = DegradationPipeline(
+        num_frames=num_frames,
+        schedule=schedule,
+        schedule_params=schedule_params,
+    )
     return pipeline.generate_sequence(image, degradation_type)
+
