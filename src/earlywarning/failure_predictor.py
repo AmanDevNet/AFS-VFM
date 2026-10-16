@@ -11,7 +11,7 @@ Usage:
 """
 
 import os, json
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Any, Union
 
 
 class FailurePredictor:
@@ -25,7 +25,7 @@ class FailurePredictor:
         CRITICAL — One or more signals below critical threshold
     """
 
-    def __init__(self, thresholds_path: Optional[str] = None):
+    def __init__(self, thresholds_path: Optional[str] = None) -> None:
         if thresholds_path is None:
             thresholds_path = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "thresholds.json"
@@ -36,9 +36,9 @@ class FailurePredictor:
                 "Run: python -m src.earlywarning.learn_thresholds"
             )
         with open(thresholds_path) as f:
-            self.thresholds = json.load(f)
+            self.thresholds: Dict[str, Any] = json.load(f)
 
-    def assess(self, model_name: str, signals_dict: Dict[str, float]) -> dict:
+    def assess(self, model_name: str, signals_dict: Dict[str, float]) -> Dict[str, Any]:
         """
         Assess current model health based on signal values.
 
@@ -92,7 +92,9 @@ class FailurePredictor:
             else:
                 sig_status = "OK"
 
-            # Estimate probability using distance from optimal threshold
+            # Estimate failure probability using normalized distance from optimal threshold:
+            # delta = max(0, (theta_opt - v) / |theta_opt|)
+            # Maps to linear probability ramp in [0.5, 1.0] when below optimal threshold
             if opt_thr != 0:
                 distance_ratio = max(0, (opt_thr - value) / abs(opt_thr))
                 prob = min(1.0, max(0.0, 0.5 + distance_ratio * 0.5))
@@ -142,7 +144,11 @@ class FailurePredictor:
             "recommendation": rec,
         }
 
-    def assess_trajectory(self, model_name: str, signal_history: list) -> dict:
+    def assess_trajectory(
+        self,
+        model_name: str,
+        signal_history: List[Dict[str, float]],
+    ) -> Dict[str, Any]:
         """
         Assess a full trajectory (list of signal dicts across frames).
         Returns per-frame assessments and identifies the first warning frame.
