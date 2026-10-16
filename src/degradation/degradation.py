@@ -61,10 +61,12 @@ class DegradationPipeline:
         num_frames: int = 20,
         schedule: str = "linear",
         schedule_params: dict = None,
+        transform_params: dict = None,
     ) -> None:
         self.num_frames = num_frames
         self.schedule = schedule
         self.schedule_params = schedule_params or {}
+        self.transform_params = transform_params or {}
         self.last_severities: np.ndarray = None
 
     # ── Thin wrapper methods (for discoverability / IDE hints) ──────────
@@ -75,9 +77,18 @@ class DegradationPipeline:
         return transformations.motion_blur(image, severity)
 
     @staticmethod
-    def occlusion(image: np.ndarray, severity: float) -> np.ndarray:
-        """Apply random black box occlusion. See ``transformations.occlusion``."""
-        return transformations.occlusion(image, severity)
+    def occlusion(
+        image: np.ndarray,
+        severity: float,
+        mode: str = "irregular",
+        texture: str = "semi_transparent",
+        alpha: float = 0.85,
+        **kwargs,
+    ) -> np.ndarray:
+        """Apply realistic occlusion effect. See ``transformations.occlusion``."""
+        return transformations.occlusion(
+            image, severity, mode=mode, texture=texture, alpha=alpha, **kwargs
+        )
 
     @staticmethod
     def lighting(image: np.ndarray, severity: float) -> np.ndarray:
@@ -102,6 +113,7 @@ class DegradationPipeline:
         degradation_type: str,
         schedule: str = None,
         schedule_params: dict = None,
+        transform_params: dict = None,
     ) -> np.ndarray:
         """Produce a sequence of *num_frames* degraded versions of *image*.
 
@@ -117,6 +129,9 @@ class DegradationPipeline:
         schedule_params : dict, optional
             Additional schedule parameters (e.g. gamma, shock_frame).
             If None, uses ``self.schedule_params``.
+        transform_params : dict, optional
+            Keyword parameters forwarded to the specific transform function
+            (e.g. ``mode='irregular'``, ``texture='semi_transparent'``).
 
         Returns
         -------
@@ -138,6 +153,7 @@ class DegradationPipeline:
 
         eff_schedule = schedule if schedule is not None else self.schedule
         eff_params = schedule_params if schedule_params is not None else self.schedule_params
+        eff_transform_params = transform_params if transform_params is not None else self.transform_params
 
         severities = SeverityScheduler.get_schedule(
             self.num_frames,
@@ -151,7 +167,11 @@ class DegradationPipeline:
         frames = np.empty((self.num_frames, h, w, 3), dtype=np.uint8)
 
         for i in range(self.num_frames):
-            frames[i] = transform_fn(image, float(severities[i]))
+            sev = float(severities[i])
+            if canonical == "occlusion" and eff_transform_params:
+                frames[i] = transform_fn(image, sev, **eff_transform_params)
+            else:
+                frames[i] = transform_fn(image, sev)
 
         return frames
 
@@ -164,6 +184,7 @@ def generate_degradation_sequence(
     num_frames: int = 20,
     schedule: str = "linear",
     schedule_params: dict = None,
+    transform_params: dict = None,
 ) -> np.ndarray:
     """Load an image and return a degradation sequence.
 
@@ -182,6 +203,8 @@ def generate_degradation_sequence(
         'step_shock', or 'oscillatory'). Default is 'linear'.
     schedule_params : dict, optional
         Keyword parameters for the scheduler.
+    transform_params : dict, optional
+        Keyword parameters for the underlying transformation (e.g. mode, texture).
 
     Returns
     -------
@@ -193,6 +216,7 @@ def generate_degradation_sequence(
         num_frames=num_frames,
         schedule=schedule,
         schedule_params=schedule_params,
+        transform_params=transform_params,
     )
     return pipeline.generate_sequence(image, degradation_type)
 

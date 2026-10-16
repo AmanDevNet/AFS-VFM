@@ -51,39 +51,114 @@ def motion_blur(image: np.ndarray, severity: float) -> np.ndarray:
 # 2. Occlusion
 # ---------------------------------------------------------------------------
 
-def occlusion(image: np.ndarray, severity: float) -> np.ndarray:
-    """Apply random black rectangular occlusions.
-    
-    At severity 0, no occlusion. At severity 1, up to 40% of the image 
-    is heavily covered with black boxes. Uses a fixed random seed 
-    based on severity to remain deterministic.
+def occlusion(
+    image: np.ndarray,
+    severity: float,
+    mode: str = "irregular",
+    texture: str = "semi_transparent",
+    alpha: float = 0.85,
+    **kwargs,
+) -> np.ndarray:
+    """Apply realistic occlusion artifacts to an image.
+
+    Supports both organic irregular polygon splatters (simulating mud, debris,
+    water spots, or natural silhouettes) and classic rectangular boxes.
+    Supports realistic photometric textures: semi-transparent dirty-lens smudges,
+    sensor noise, or solid opaque fills.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        RGB uint8 array of shape (H, W, 3).
+    severity : float
+        Float in [0, 1] controlling coverage and intensity. At 0, returns untouched image.
+    mode : str, optional
+        Occlusion geometry:
+        - "irregular" / "splatter" / "blob": Organic randomized polygon splatters (default).
+        - "boxes" / "rectangular": Axis-aligned rectangular patches (legacy mode).
+    texture : str, optional
+        Photometric appearance of occluded regions:
+        - "semi_transparent" / "smudge": Translucent smudge with edge softening (default).
+        - "noise": Textured Gaussian noise simulating sensor/surface grain.
+        - "black" / "solid": Opaque zero-fill.
+    alpha : float, optional
+        Opacity of occlusion when texture is semi-transparent, in [0.0, 1.0]. Default 0.85.
+
+    Returns
+    -------
+    np.ndarray
+        Occluded RGB image with same shape and uint8 dtype.
     """
     if severity <= 0.0:
         return image.copy()
-        
-    out = image.copy()
-    h, w = out.shape[:2]
-    
-    # Deterministic seed based on severity to ensure repeatable sequences
-    rs = np.random.RandomState(int(severity * 1000))
-    
-    # Scale max number of boxes and max box size with severity
-    max_boxes = int(severity * 50)
-    max_box_h = int(severity * (h * 0.3))
-    max_box_w = int(severity * (w * 0.3))
-    
-    num_boxes = rs.randint(1, max(2, max_boxes + 1))
-    
-    for _ in range(num_boxes):
-        box_h = rs.randint(10, max(11, max_box_h))
-        box_w = rs.randint(10, max(11, max_box_w))
-        
-        y = rs.randint(0, max(1, h - box_h))
-        x = rs.randint(0, max(1, w - box_w))
-        
-        out[y:y+box_h, x:x+box_w] = 0
-        
-    return out
+
+    h, w = image.shape[:2]
+    # Deterministic pseudo-random generator tied strictly to severity
+    seed = int(severity * 10000) + 42
+    rs = np.random.RandomState(seed)
+
+    mask = np.zeros((h, w), dtype=np.float32)
+    mode_key = mode.lower().strip()
+
+    if mode_key in ("boxes", "box", "rectangular"):
+        # Legacy rectangular patches
+        max_boxes = int(severity * 50)
+        max_box_h = int(severity * (h * 0.3))
+        max_box_w = int(severity * (w * 0.3))
+        num_boxes = rs.randint(1, max(2, max_boxes + 1))
+
+        for _ in range(num_boxes):
+            box_h = rs.randint(10, max(11, max_box_h))
+            box_w = rs.randint(10, max(11, max_box_w))
+            y = rs.randint(0, max(1, h - box_h))
+            x = rs.randint(0, max(1, w - box_w))
+            mask[y:y + box_h, x:x + box_w] = 1.0
+    else:
+        # Default: Organic irregular splatters / blobs
+        max_blobs = int(1 + severity * 25)
+        num_blobs = rs.randint(1, max(2, max_blobs + 1))
+        max_radius = int(max(15, min(h, w) * 0.25 * severity))
+
+        for _ in range(num_blobs):
+            cx = rs.randint(0, w)
+            cy = rs.randint(0, h)
+            base_r = rs.randint(8, max(9, max_radius))
+
+            # Sample 8 to 14 irregular radial points
+            num_vertices = rs.randint(8, 15)
+            angles = np.linspace(0, 2.0 * np.pi, num_vertices, endpoint=False)
+            angles += rs.uniform(-0.15, 0.15, size=num_vertices)
+
+            radii = base_r * rs.uniform(0.5, 1.4, size=num_vertices)
+            pts_x = np.clip(cx + radii * np.cos(angles), 0, w - 1).astype(np.int32)
+            pts_y = np.clip(cy + radii * np.sin(angles), 0, h - 1).astype(np.int32)
+            pts = np.stack([pts_x, pts_y], axis=1)
+
+            poly_mask = np.zeros((h, w), dtype=np.uint8)
+            cv2.fillPoly(poly_mask, [pts], 255)
+            mask = np.maximum(mask, poly_mask.astype(np.float32) / 255.0)
+
+        # Soften boundaries for realistic organic edge dispersion
+        mask = cv2.GaussianBlur(mask, (7, 7), 0)
+
+    mask = np.clip(mask, 0.0, 1.0)
+    tex_key = texture.lower().strip()
+    out = image.astype(np.float32)
+
+    if tex_key in ("black", "solid", "opaque"):
+        out[mask > 0.5] = 0.0
+    elif tex_key in ("noise", "grain"):
+        noise = rs.normal(100.0, 45.0, size=image.shape)
+        noise = np.clip(noise, 0.0, 255.0)
+        eff_mask = (mask * alpha)[:, :, None]
+        out = (1.0 - eff_mask) * out + eff_mask * noise
+    else:
+        # "semi_transparent" / "smudge"
+        blurred_bg = cv2.GaussianBlur(image, (21, 21), 0).astype(np.float32) * 0.25
+        eff_mask = (mask * alpha)[:, :, None]
+        out = (1.0 - eff_mask) * out + eff_mask * blurred_bg
+
+    return np.clip(out, 0.0, 255.0).astype(np.uint8)
 
 
 # ---------------------------------------------------------------------------
