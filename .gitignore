@@ -37,3 +37,16 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Testing and coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter / IPython checkpoints
+.ipynb_checkpoints/
+
+# Environment and logging
+.env
+*.log
+
