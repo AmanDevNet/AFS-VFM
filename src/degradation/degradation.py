@@ -17,6 +17,7 @@ import numpy as np
 from . import transformations
 from .utils import load_image
 from .scheduler import SeverityScheduler
+from .compound import CompoundDegradation, COMPOUND_RECIPES
 
 
 # ── Supported degradation type aliases ──────────────────────────────────────
@@ -105,12 +106,22 @@ class DegradationPipeline:
         """Apply 3D perspective warp. See ``transformations.viewpoint``."""
         return transformations.viewpoint(image, severity)
 
+    @staticmethod
+    def compound(
+        image: np.ndarray,
+        severity: float,
+        components,
+        **kwargs,
+    ) -> np.ndarray:
+        """Apply compound degradation. See ``CompoundDegradation.apply``."""
+        return CompoundDegradation.apply(image, severity, components, **kwargs)
+
     # ── Core orchestration ──────────────────────────────────────────────
 
     def generate_sequence(
         self,
         image: np.ndarray,
-        degradation_type: str,
+        degradation_type,
         schedule: str = None,
         schedule_params: dict = None,
         transform_params: dict = None,
@@ -121,17 +132,17 @@ class DegradationPipeline:
         ----------
         image : np.ndarray
             Source image in RGB uint8 format, shape (H, W, 3).
-        degradation_type : str
-            Name of the degradation to apply. Accepted values include
-            ``"blur"``, ``"motion_blur"``, ``"occlusion"``, etc.
+        degradation_type : str or sequence
+            Name of degradation (e.g. ``"blur"``), compound recipe name
+            (e.g. ``"night_motion"``), plus-separated chain (e.g. ``"lighting+blur"``),
+            or a list of component dicts.
         schedule : str, optional
             Progression schedule to use. If None, uses ``self.schedule``.
         schedule_params : dict, optional
             Additional schedule parameters (e.g. gamma, shock_frame).
             If None, uses ``self.schedule_params``.
         transform_params : dict, optional
-            Keyword parameters forwarded to the specific transform function
-            (e.g. ``mode='irregular'``, ``texture='semi_transparent'``).
+            Keyword parameters forwarded to the specific transform function.
 
         Returns
         -------
@@ -143,14 +154,6 @@ class DegradationPipeline:
         ValueError
             If *degradation_type* or *schedule* is not recognised.
         """
-        canonical = _TYPE_ALIASES.get(degradation_type.lower())
-        if canonical is None:
-            supported = sorted(set(_TYPE_ALIASES.keys()))
-            raise ValueError(
-                f"Unknown degradation type '{degradation_type}'. "
-                f"Supported types: {supported}"
-            )
-
         eff_schedule = schedule if schedule is not None else self.schedule
         eff_params = schedule_params if schedule_params is not None else self.schedule_params
         eff_transform_params = transform_params if transform_params is not None else self.transform_params
@@ -162,9 +165,38 @@ class DegradationPipeline:
         )
         self.last_severities = severities
 
-        transform_fn = self._TRANSFORMS[canonical]
         h, w = image.shape[:2]
         frames = np.empty((self.num_frames, h, w, 3), dtype=np.uint8)
+
+        # Check if degradation_type is a compound specification
+        is_compound = False
+        if isinstance(degradation_type, (list, tuple)):
+            is_compound = True
+        elif isinstance(degradation_type, str):
+            deg_lower = degradation_type.lower().strip()
+            if deg_lower in COMPOUND_RECIPES or "+" in deg_lower:
+                is_compound = True
+
+        if is_compound:
+            for i in range(self.num_frames):
+                frames[i] = CompoundDegradation.apply(
+                    image,
+                    float(severities[i]),
+                    degradation_type,
+                    **eff_transform_params
+                )
+            return frames
+
+        # Single degradation route
+        canonical = _TYPE_ALIASES.get(str(degradation_type).lower())
+        if canonical is None:
+            supported = sorted(set(list(_TYPE_ALIASES.keys()) + list(COMPOUND_RECIPES.keys())))
+            raise ValueError(
+                f"Unknown degradation type '{degradation_type}'. "
+                f"Supported types: {supported}"
+            )
+
+        transform_fn = self._TRANSFORMS[canonical]
 
         for i in range(self.num_frames):
             sev = float(severities[i])
