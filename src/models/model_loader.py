@@ -11,6 +11,7 @@ Usage
 >>> model, processor = loader.load_dinov2()
 """
 
+from typing import Tuple
 import torch
 from transformers import (
     AutoImageProcessor,
@@ -46,7 +47,7 @@ class VisionModelLoader:
 
     # ── DINOv2 (Image Classification) ──────────────────────────────────
 
-    def load_dinov2(self):
+    def load_dinov2(self) -> Tuple[AutoModelForImageClassification, AutoImageProcessor]:
         """Load Meta DINOv2 for ImageNet-1k classification."""
         print("  Loading DINOv2 (facebook/dinov2-base-imagenet1k-1-layer) ...")
         model_id = "facebook/dinov2-base-imagenet1k-1-layer"
@@ -60,7 +61,7 @@ class VisionModelLoader:
 
     # ── CLIP (Zero-Shot Classification) ────────────────────────────────
 
-    def load_clip(self):
+    def load_clip(self) -> Tuple[CLIPModel, CLIPProcessor]:
         """Load OpenAI CLIP ViT-B/32 for zero-shot classification."""
         print("  Loading CLIP (openai/clip-vit-base-patch32) ...")
         model_id = "openai/clip-vit-base-patch32"
@@ -74,7 +75,7 @@ class VisionModelLoader:
 
     # ── DETR (Object Detection) ────────────────────────────────────────
 
-    def load_detr(self):
+    def load_detr(self) -> Tuple[DetrForObjectDetection, DetrImageProcessor]:
         """Load Meta DETR ResNet-50 for object detection."""
         print("  Loading DETR (facebook/detr-resnet-50) ...")
         model_id = "facebook/detr-resnet-50"
