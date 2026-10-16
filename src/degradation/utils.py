@@ -5,11 +5,14 @@ Provides image I/O and dimension-preserving helpers used throughout
 the degradation pipeline.
 """
 
+import os
+from pathlib import Path
+from typing import Union
 import cv2
 import numpy as np
 
 
-def load_image(path: str) -> np.ndarray:
+def load_image(path: Union[str, Path]) -> np.ndarray:
     """Load an image from disk and return it in RGB format.
 
     Args:
@@ -21,12 +24,26 @@ def load_image(path: str) -> np.ndarray:
     Raises:
         FileNotFoundError: If the image cannot be read by OpenCV.
     """
-    image = cv2.imread(path, cv2.IMREAD_COLOR)
+    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
     if image is None:
         raise FileNotFoundError(f"Could not load image: {path}")
     # OpenCV loads as BGR — convert to RGB
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     return image
+
+
+def save_image(path: Union[str, Path], image: np.ndarray) -> None:
+    """Save an RGB image array to disk in standard image format.
+
+    Args:
+        path: Destination file path.
+        image: NumPy array of shape (H, W, 3) with dtype uint8, in RGB order.
+    """
+    dest_dir = os.path.dirname(os.path.abspath(str(path)))
+    if dest_dir:
+        os.makedirs(dest_dir, exist_ok=True)
+    bgr_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(str(path), bgr_image)
 
 
 def ensure_dimensions(image: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
