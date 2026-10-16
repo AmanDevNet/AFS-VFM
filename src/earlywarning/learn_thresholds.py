@@ -21,7 +21,7 @@ OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_SIGNALS = {
     "dinov2": ["top1_confidence", "logit_margin", "cosine_sim"],
     "clip":   ["top1_confidence", "logit_margin", "cosine_sim"],
-    "detr":   ["top_detection_confidence"],
+    "detr":   ["top_detection_confidence", "cosine_sim"],
 }
 
 

@@ -176,7 +176,7 @@ def compute_prefailure_statistics(merged: pd.DataFrame) -> pd.DataFrame:
     signal_cols = {
         "dinov2": ["top1_confidence", "logit_margin", "cosine_sim", "l2_distance", "top5_overlap"],
         "clip": ["top1_confidence", "logit_margin", "cosine_sim", "l2_distance"],
-        "detr": ["top_detection_confidence", "objectness"],
+        "detr": ["top_detection_confidence", "objectness", "cosine_sim"],
     }
 
     for model in MODELS:

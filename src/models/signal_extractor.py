@@ -123,8 +123,17 @@ class SignalExtractor:
         inputs = processor(images=frame_pil, return_tensors="pt").to(self.device)
 
         with torch.no_grad():
-            outputs = model(**inputs)
+            outputs = model(**inputs, output_hidden_states=True)
             logits = outputs.logits[0]  # (num_queries=100, num_classes+1)
+
+            # Global spatial representation from Transformer Encoder (Image Embedding)
+            # encoder_last_hidden_state: (batch, seq_len=49, hidden_dim=256)
+            if hasattr(outputs, "encoder_last_hidden_state") and outputs.encoder_last_hidden_state is not None:
+                encoder_emb = outputs.encoder_last_hidden_state[0].mean(dim=0).cpu().numpy()
+            elif hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
+                encoder_emb = outputs.last_hidden_state[0].mean(dim=0).cpu().numpy()
+            else:
+                encoder_emb = np.zeros(256, dtype=np.float32)
 
         # Drop the 'no-object' class (last column)
         class_logits = logits[:, :-1]
@@ -139,6 +148,12 @@ class SignalExtractor:
         top_class_id = max_class_per_query[best_query_idx].item()
         prediction = model.config.id2label[top_class_id]
 
+        # Top query embedding (Decoder object query embedding)
+        if hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
+            query_emb = outputs.last_hidden_state[0, best_query_idx].cpu().numpy()
+        else:
+            query_emb = encoder_emb
+
         # Objectness
         objectness = float(max_prob_per_query.max().cpu())
 
@@ -152,6 +167,9 @@ class SignalExtractor:
                        for qi in top5_query_idx]
 
         return {
+            "image_embedding": encoder_emb,
+            "encoder_embedding": encoder_emb,
+            "query_embedding": query_emb,
             "top_detection_confidence": top_det_conf,
             "objectness_score": objectness,
             "top5_detection_logits": top5_logits,
@@ -166,16 +184,30 @@ class SignalExtractor:
 
     @staticmethod
     def cosine_similarity(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
-        dot = np.dot(vec_a, vec_b)
+        """Compute cosine similarity with strict numerical stability guards against NaN."""
+        if vec_a is None or vec_b is None:
+            return 0.0
         norm_a = np.linalg.norm(vec_a)
         norm_b = np.linalg.norm(vec_b)
-        if norm_a == 0 or norm_b == 0:
+        if norm_a == 0.0 or norm_b == 0.0 or np.isnan(norm_a) or np.isnan(norm_b):
             return 0.0
-        return float(dot / (norm_a * norm_b))
+        dot = np.dot(vec_a, vec_b)
+        if np.isnan(dot):
+            return 0.0
+        sim = float(dot / (norm_a * norm_b + 1e-8))
+        if np.isnan(sim):
+            return 0.0
+        return float(np.clip(sim, -1.0, 1.0))
 
     @staticmethod
     def l2_distance(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
-        return float(np.linalg.norm(vec_a - vec_b))
+        """Compute L2 distance with numerical sanity checks."""
+        if vec_a is None or vec_b is None:
+            return 0.0
+        diff = vec_a - vec_b
+        if np.isnan(diff).any():
+            return 0.0
+        return float(np.linalg.norm(diff))
 
     @staticmethod
     def top5_overlap(labels_a: list, labels_b: list) -> float:
