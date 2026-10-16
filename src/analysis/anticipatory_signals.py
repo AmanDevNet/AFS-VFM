@@ -67,8 +67,13 @@ def merge_boundaries_and_signals(boundaries: pd.DataFrame, signals: pd.DataFrame
             sig_cols = ["clip_top1_confidence", "clip_logit_margin",
                         "clip_cosine_sim", "clip_l2_distance"]
         else:  # detr
-            sig_cols = ["detr_top_detection_confidence", "detr_objectness",
-                        "detr_num_detections"]
+            detr_candidates = [
+                "detr_top_detection_confidence", "detr_objectness",
+                "detr_num_detections", "detr_cosine_sim", "detr_l2_distance"
+            ]
+            sig_cols = [c for c in detr_candidates if c in signals.columns]
+            if not sig_cols:
+                sig_cols = ["detr_top_detection_confidence", "detr_objectness", "detr_num_detections"]
 
         # Subset signals to relevant columns
         sig_subset = signals[["image", "degradation", "frame", "severity_pct"] + sig_cols].copy()
