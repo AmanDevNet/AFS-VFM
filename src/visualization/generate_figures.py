@@ -26,32 +26,110 @@ PHASE2C = os.path.join(ROOT, "results", "phase2c")
 PHASE2D = os.path.join(ROOT, "results", "phase2d")
 FIG_DIR = os.path.join(ROOT, "results", "figures")
 
-# ── Style ────────────────────────────────────────────────────────────────
-MODEL_COLORS = {"dinov2": "#2ecc71", "clip": "#3498db", "detr": "#e74c3c"}
-MODEL_LABELS = {"dinov2": "DINOv2", "clip": "CLIP", "detr": "DETR"}
-DEG_ORDER = ["blur", "lighting", "occlusion", "scale", "viewpoint"]
-DEG_LABELS = {"blur": "Motion Blur", "lighting": "Lighting", "occlusion": "Occlusion",
-              "scale": "Scale", "viewpoint": "Viewpoint"}
+# ── Style & Aesthetic Palettes ───────────────────────────────────────────
+MODEL_COLORS = {
+    "dinov2": "#2ecc71",
+    "dinov2_base": "#2ecc71",
+    "dinov2_large": "#27ae60",
+    "clip": "#3498db",
+    "siglip": "#9b59b6",
+    "detr": "#e74c3c",
+}
 
-def setup_style():
-    plt.rcParams.update({
-        "figure.facecolor": "#0d1117",
-        "axes.facecolor": "#161b22",
-        "axes.edgecolor": "#30363d",
-        "axes.labelcolor": "#c9d1d9",
-        "text.color": "#c9d1d9",
-        "xtick.color": "#8b949e",
-        "ytick.color": "#8b949e",
-        "grid.color": "#21262d",
-        "grid.alpha": 0.6,
-        "font.family": "sans-serif",
-        "font.size": 11,
-        "axes.titlesize": 14,
-        "axes.titleweight": "bold",
-        "figure.dpi": 200,
-        "savefig.bbox": "tight",
-        "savefig.pad_inches": 0.3,
-    })
+MODEL_LABELS = {
+    "dinov2": "DINOv2-Base",
+    "dinov2_base": "DINOv2-Base",
+    "dinov2_large": "DINOv2-Large",
+    "clip": "CLIP ViT-B/32",
+    "siglip": "SigLIP ViT-B/16",
+    "detr": "DETR ResNet-50",
+}
+
+DEG_ORDER = [
+    "blur", "lighting", "occlusion", "scale", "viewpoint",
+    "gaussian_noise", "fog_haze", "contrast"
+]
+
+DEG_LABELS = {
+    "blur": "Motion Blur",
+    "lighting": "Lighting",
+    "occlusion": "Occlusion",
+    "scale": "Scale",
+    "viewpoint": "Viewpoint",
+    "gaussian_noise": "Gaussian Noise",
+    "fog_haze": "Fog / Haze",
+    "contrast": "Contrast",
+}
+
+
+def set_publication_style(theme: str = "paper", dpi: int = 300) -> None:
+    """Configure matplotlib with publication-grade aesthetic defaults.
+
+    Parameters
+    ----------
+    theme : str
+        'paper' / 'light' for peer-reviewed journal/conference submission styling (clean white background),
+        or 'dark' for presentation and interactive dashboard styling.
+    dpi : int
+        Figure resolution in dots-per-inch (default 300 for camera-ready print).
+    """
+    if theme in ("paper", "light"):
+        plt.rcParams.update({
+            "figure.facecolor": "#ffffff",
+            "axes.facecolor": "#ffffff",
+            "axes.edgecolor": "#333333",
+            "axes.labelcolor": "#111111",
+            "text.color": "#111111",
+            "xtick.color": "#333333",
+            "ytick.color": "#333333",
+            "grid.color": "#e0e0e0",
+            "grid.alpha": 0.8,
+            "grid.linestyle": "--",
+            "grid.linewidth": 0.6,
+            "font.family": "serif",
+            "font.size": 11,
+            "axes.titlesize": 13,
+            "axes.titleweight": "bold",
+            "axes.labelsize": 12,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "legend.fontsize": 10,
+            "figure.dpi": dpi,
+            "savefig.dpi": dpi,
+            "savefig.bbox": "tight",
+            "savefig.pad_inches": 0.2,
+        })
+    else:
+        plt.rcParams.update({
+            "figure.facecolor": "#0d1117",
+            "axes.facecolor": "#161b22",
+            "axes.edgecolor": "#30363d",
+            "axes.labelcolor": "#c9d1d9",
+            "text.color": "#c9d1d9",
+            "xtick.color": "#8b949e",
+            "ytick.color": "#8b949e",
+            "grid.color": "#21262d",
+            "grid.alpha": 0.6,
+            "grid.linestyle": "--",
+            "grid.linewidth": 0.6,
+            "font.family": "sans-serif",
+            "font.size": 11,
+            "axes.titlesize": 14,
+            "axes.titleweight": "bold",
+            "axes.labelsize": 12,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "legend.fontsize": 10,
+            "figure.dpi": dpi,
+            "savefig.dpi": dpi,
+            "savefig.bbox": "tight",
+            "savefig.pad_inches": 0.3,
+        })
+
+
+def setup_style() -> None:
+    """Backward-compatible dashboard dark style setup."""
+    set_publication_style(theme="dark", dpi=200)
 
 # ═══════════════════════════════════════════════════════════════════════
 # FIGURE 1: Robustness Heatmap
@@ -483,6 +561,10 @@ def main():
 
     print(f"\n  All figures saved to: {FIG_DIR}")
     print("=" * 60)
+
+
+# Programmatic API alias
+generate_all_figures = main
 
 
 if __name__ == "__main__":
