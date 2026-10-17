@@ -2,48 +2,81 @@
 AFS-VFM Phase 2A - Failure Boundary Analysis
 =============================================
 
-Analyzes the Phase 1 benchmark CSV (150,000 rows) to:
+Analyzes benchmark CSVs to:
   1. Find the exact first-failure frame for every (image, degradation, model) triplet
-  2. Compute failure statistics per (model × degradation) group
+  2. Compute failure statistics per (model x degradation) group
   3. Run statistical significance tests (Kruskal-Wallis, Mann-Whitney U)
   4. Build failure transition matrices (what classes do models drift toward?)
   5. Generate a human-readable summary report
 
+Supports dynamic model discovery across standard and expanded model registries
+(DINOv2-Base, DINOv2-Large, CLIP, SigLIP, DETR).
+
 Usage:
     python -m src.analysis.failure_boundaries
     python -m src.analysis.failure_boundaries --csv path/to/benchmark.csv
+    python -m src.analysis.failure_boundaries --models dinov2 clip siglip
 """
 
 import os
 import sys
 import argparse
 from itertools import combinations
+from typing import Optional, Sequence, List, Dict, Any
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-# ── Paths ───────────────────────────────────────────────────────────────────
+# ── Paths & Model Registries ────────────────────────────────────────────────
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_CSV = os.path.join(ROOT_DIR, "results", "full_benchmark.csv")
 OUTPUT_DIR = os.path.join(ROOT_DIR, "results", "phase2a")
 
-MODELS = ["dinov2", "clip", "detr"]
-NUM_FRAMES = 20
+SUPPORTED_MODELS: list[str] = ["dinov2", "dinov2_large", "clip", "siglip", "detr"]
+DEFAULT_MODELS: list[str] = ["dinov2", "clip", "detr"]
+MODELS: list[str] = DEFAULT_MODELS  # Backward-compatibility alias
+NUM_FRAMES: int = 20
+
+
+def discover_models(df: pd.DataFrame, models: Optional[Sequence[str]] = None) -> list[str]:
+    """Dynamically discover models present in a benchmark or boundaries DataFrame."""
+    if models is not None and len(models) > 0:
+        return list(models)
+
+    discovered = []
+    # Check for '{model}_failure' pattern in columns
+    for col in df.columns:
+        if col.endswith("_failure"):
+            candidate = col[:-8]
+            if candidate not in discovered:
+                discovered.append(candidate)
+
+    # Check if 'model' column exists with categorical values
+    if "model" in df.columns:
+        for val in df["model"].dropna().unique():
+            s_val = str(val)
+            if s_val not in discovered:
+                discovered.append(s_val)
+
+    return discovered if discovered else list(DEFAULT_MODELS)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Step 1: First-Failure Frame Extraction
 # ═════════════════════════════════════════════════════════════════════════════
 
-def extract_failure_boundaries(df: pd.DataFrame) -> pd.DataFrame:
+def extract_failure_boundaries(
+    df: pd.DataFrame, models: Optional[Sequence[str]] = None
+) -> pd.DataFrame:
     """Find the first frame where each model fails for every (image, degradation) pair.
 
     Returns a DataFrame with columns:
         image, dataset, degradation, model, first_failure_frame,
         first_failure_severity_pct, survived
     """
-    print("\n  [Step 1] Extracting first-failure frames ...")
+    active_models = discover_models(df, models)
+    print(f"\n  [Step 1] Extracting first-failure frames for {len(active_models)} models: {active_models} ...")
     records = []
 
     # Group by (image, degradation) — each group has 20 rows (one per frame)
@@ -52,8 +85,10 @@ def extract_failure_boundaries(df: pd.DataFrame) -> pd.DataFrame:
     for (image, dataset, degradation), group in grouped:
         group = group.sort_values("frame")
 
-        for model in MODELS:
+        for model in active_models:
             fail_col = f"{model}_failure"
+            if fail_col not in group.columns:
+                continue
 
             # Find rows where this model failed
             failures = group[group[fail_col] == True]
@@ -85,7 +120,7 @@ def extract_failure_boundaries(df: pd.DataFrame) -> pd.DataFrame:
     n_total = len(result)
     n_survived = result["survived"].sum()
     print(f"         {n_total:,} triplets analyzed")
-    print(f"         {n_survived:,} survived all frames ({n_survived/n_total*100:.1f}%)")
+    print(f"         {n_survived:,} survived all frames ({n_survived/max(1, n_total)*100:.1f}%)")
     print(f"         {n_total - n_survived:,} had at least one failure")
     return result
 
@@ -94,17 +129,22 @@ def extract_failure_boundaries(df: pd.DataFrame) -> pd.DataFrame:
 # Step 2: Failure Statistics Per Group
 # ═════════════════════════════════════════════════════════════════════════════
 
-def compute_failure_statistics(boundaries: pd.DataFrame) -> pd.DataFrame:
-    """Compute failure stats for each (model × degradation) group."""
-    print("\n  [Step 2] Computing failure statistics ...")
+def compute_failure_statistics(
+    boundaries: pd.DataFrame, models: Optional[Sequence[str]] = None
+) -> pd.DataFrame:
+    """Compute failure stats for each (model x degradation) group."""
+    active_models = discover_models(boundaries, models)
+    print(f"\n  [Step 2] Computing failure statistics for {len(active_models)} models ...")
     records = []
 
-    for model in MODELS:
+    for model in active_models:
         model_data = boundaries[boundaries["model"] == model]
 
         for deg in sorted(boundaries["degradation"].unique()):
             group = model_data[model_data["degradation"] == deg]
             total = len(group)
+            if total == 0:
+                continue
             survived = group["survived"].sum()
             failed = group[~group["survived"]]
             failure_frames = failed["first_failure_frame"].dropna()
@@ -142,7 +182,7 @@ def compute_failure_statistics(boundaries: pd.DataFrame) -> pd.DataFrame:
             records.append(record)
 
     result = pd.DataFrame(records)
-    print(f"         {len(result)} groups analyzed (3 models × {len(result)//3} degradations)")
+    print(f"         {len(result)} groups analyzed ({len(active_models)} models x {len(result)//max(1, len(active_models))} degradations)")
     return result
 
 
@@ -150,9 +190,12 @@ def compute_failure_statistics(boundaries: pd.DataFrame) -> pd.DataFrame:
 # Step 3: Statistical Significance Tests
 # ═════════════════════════════════════════════════════════════════════════════
 
-def run_statistical_tests(boundaries: pd.DataFrame) -> pd.DataFrame:
+def run_statistical_tests(
+    boundaries: pd.DataFrame, models: Optional[Sequence[str]] = None
+) -> pd.DataFrame:
     """Run Kruskal-Wallis and pairwise Mann-Whitney U tests."""
-    print("\n  [Step 3] Running statistical significance tests ...")
+    active_models = discover_models(boundaries, models)
+    print(f"\n  [Step 3] Running statistical significance tests across {len(active_models)} models ...")
 
     # Only use triplets where the model actually failed (has a failure frame)
     failed = boundaries[~boundaries["survived"]].copy()
@@ -164,11 +207,11 @@ def run_statistical_tests(boundaries: pd.DataFrame) -> pd.DataFrame:
 
         # Collect failure frames per model
         model_groups = {}
-        for model in MODELS:
+        for model in active_models:
             frames = deg_data[deg_data["model"] == model]["first_failure_frame"].dropna()
             model_groups[model] = frames.values
 
-        # ── Kruskal-Wallis (3-group comparison) ──
+        # ── Kruskal-Wallis omnibus comparison ──
         groups_for_kw = [g for g in model_groups.values() if len(g) >= 2]
         if len(groups_for_kw) >= 2:
             h_stat, kw_p = stats.kruskal(*groups_for_kw)
@@ -190,23 +233,23 @@ def run_statistical_tests(boundaries: pd.DataFrame) -> pd.DataFrame:
         })
 
         # ── Pairwise Mann-Whitney U with Bonferroni correction ──
-        pairs = list(combinations(MODELS, 2))
+        pairs = list(combinations(active_models, 2))
         n_pairs = len(pairs)
 
         for model_a, model_b in pairs:
-            ga = model_groups[model_a]
-            gb = model_groups[model_b]
+            ga = model_groups.get(model_a, np.array([]))
+            gb = model_groups.get(model_b, np.array([]))
 
             if len(ga) < 2 or len(gb) < 2:
                 continue
 
             u_stat, mw_p = stats.mannwhitneyu(ga, gb, alternative="two-sided")
-            p_corrected = min(mw_p * n_pairs, 1.0)  # Bonferroni
+            p_corrected = min(mw_p * max(1, n_pairs), 1.0)  # Bonferroni
 
             # Cohen's d (using pooled std)
             pooled_std = np.sqrt(
                 ((len(ga) - 1) * ga.std()**2 + (len(gb) - 1) * gb.std()**2)
-                / (len(ga) + len(gb) - 2)
+                / max(1, (len(ga) + len(gb) - 2))
             )
             cohens_d = abs(ga.mean() - gb.mean()) / pooled_std if pooled_std > 0 else 0
 
@@ -237,7 +280,7 @@ def run_statistical_tests(boundaries: pd.DataFrame) -> pd.DataFrame:
     result = pd.DataFrame(records)
     n_sig = result[result["test"] == "mann_whitney_u"]["significant_005"].sum()
     n_total = len(result[result["test"] == "mann_whitney_u"])
-    print(f"         {n_sig}/{n_total} pairwise comparisons are significant (p < 0.05, Bonferroni)")
+    print(f"         {n_sig}/{max(1, n_total)} pairwise comparisons are significant (p < 0.05, Bonferroni)")
     return result
 
 
@@ -245,14 +288,20 @@ def run_statistical_tests(boundaries: pd.DataFrame) -> pd.DataFrame:
 # Step 4: Failure Transition Matrices
 # ═════════════════════════════════════════════════════════════════════════════
 
-def build_transition_matrices(df: pd.DataFrame) -> dict:
+def build_transition_matrices(
+    df: pd.DataFrame, models: Optional[Sequence[str]] = None
+) -> dict:
     """For each model, find what class predictions drift TO when failure occurs."""
-    print("\n  [Step 4] Building failure transition matrices ...")
+    active_models = discover_models(df, models)
+    print(f"\n  [Step 4] Building failure transition matrices for {len(active_models)} models ...")
     transitions = {}
 
-    for model in MODELS:
+    for model in active_models:
         pred_col = f"{model}_prediction"
         fail_col = f"{model}_failure"
+
+        if pred_col not in df.columns or fail_col not in df.columns:
+            continue
 
         # Get baseline predictions (frame 1) and failure predictions
         baselines = df[df["frame"] == 1][["image", "degradation", pred_col]].copy()
@@ -269,7 +318,7 @@ def build_transition_matrices(df: pd.DataFrame) -> dict:
             baselines, on=["image", "degradation"], how="left"
         )
 
-        # Count transitions: baseline_class → failed_class
+        # Count transitions: baseline_class -> failed_class
         trans = (
             merged.groupby(["baseline_prediction", pred_col])
             .size()
@@ -298,8 +347,10 @@ def generate_report(
     statistics: pd.DataFrame,
     tests: pd.DataFrame,
     transitions: dict,
+    models: Optional[Sequence[str]] = None,
 ) -> str:
     """Generate a human-readable text report summarizing all Phase 2A findings."""
+    active_models = discover_models(boundaries, models)
     print("\n  [Step 5] Generating summary report ...")
 
     lines = []
@@ -313,32 +364,36 @@ def generate_report(
     survived = boundaries["survived"].sum()
     lines.append("--- OVERALL SUMMARY ---")
     lines.append(f"  Total (image, degradation, model) triplets: {total:,}")
-    lines.append(f"  Survived all 20 frames: {survived:,} ({survived/total*100:.1f}%)")
-    lines.append(f"  Had at least one failure: {total - survived:,} ({(total-survived)/total*100:.1f}%)")
+    lines.append(f"  Survived all 20 frames: {survived:,} ({survived/max(1, total)*100:.1f}%)")
+    lines.append(f"  Had at least one failure: {total - survived:,} ({(total-survived)/max(1, total)*100:.1f}%)")
     lines.append("")
 
     # Per-model survival
     lines.append("--- PER-MODEL SURVIVAL RATE ---")
-    for model in MODELS:
+    for model in active_models:
         m = boundaries[boundaries["model"] == model]
         s = m["survived"].sum()
-        lines.append(f"  {model.upper():8s}: {s}/{len(m)} survived "
-                      f"({s/len(m)*100:.1f}% survival rate)")
+        total_m = len(m)
+        if total_m > 0:
+            lines.append(f"  {model.upper():12s}: {s}/{total_m} survived "
+                          f"({s/total_m*100:.1f}% survival rate)")
+        else:
+            lines.append(f"  {model.upper():12s}: 0/0 survived")
     lines.append("")
 
     # ── Failure Statistics Table ──
-    lines.append("--- FAILURE STATISTICS (model × degradation) ---")
-    lines.append(f"  {'Model':<8s} {'Degradation':<12s} {'FailRate%':>9s} "
+    lines.append("--- FAILURE STATISTICS (model x degradation) ---")
+    lines.append(f"  {'Model':<12s} {'Degradation':<12s} {'FailRate%':>9s} "
                   f"{'MeanFrame':>9s} {'MedianFr':>9s} {'StdFr':>7s} "
                   f"{'Fragility':>9s} {'Survived%':>9s}")
-    lines.append("  " + "-" * 80)
+    lines.append("  " + "-" * 84)
 
     for _, row in statistics.iterrows():
         mf = f"{row['mean_failure_frame']:.1f}" if pd.notna(row['mean_failure_frame']) else "N/A"
         md = f"{row['median_failure_frame']:.1f}" if pd.notna(row['median_failure_frame']) else "N/A"
         sd = f"{row['std_failure_frame']:.1f}" if pd.notna(row['std_failure_frame']) else "N/A"
         fg = f"{row['fragility_score']:.3f}" if pd.notna(row['fragility_score']) else "N/A"
-        lines.append(f"  {row['model']:<8s} {row['degradation']:<12s} "
+        lines.append(f"  {row['model']:<12s} {row['degradation']:<12s} "
                       f"{row['failure_rate_pct']:>8.1f}% {mf:>9s} {md:>9s} "
                       f"{sd:>7s} {fg:>9s} {row['survival_rate_pct']:>8.1f}%")
     lines.append("")
@@ -377,8 +432,9 @@ def generate_report(
     kw_tests = tests[tests["test"] == "kruskal_wallis"]
     for _, row in kw_tests.iterrows():
         sig = "***" if row["significant_005"] else "n.s."
-        lines.append(f"  {row['degradation']:<12s} Kruskal-Wallis H={row['statistic']:.2f}, "
-                      f"p={row['p_value']:.2e} {sig}")
+        h_str = f"{row['statistic']:.2f}" if pd.notna(row['statistic']) else "N/A"
+        p_str = f"{row['p_value']:.2e}" if pd.notna(row['p_value']) else "N/A"
+        lines.append(f"  {row['degradation']:<12s} Kruskal-Wallis H={h_str}, p={p_str} {sig}")
 
     lines.append("")
     lines.append("  Pairwise Mann-Whitney U (significant only):")
@@ -387,14 +443,14 @@ def generate_report(
         lines.append("    (none significant after Bonferroni correction)")
     else:
         for _, row in mw_sig.iterrows():
-            lines.append(f"    {row['degradation']:<12s} {row['comparison']:<20s} "
+            lines.append(f"    {row['degradation']:<12s} {row['comparison']:<24s} "
                           f"p_corrected={row['p_value_corrected']:.4f}, "
                           f"d={row['effect_size']:.3f} ({row['effect_size_label']})")
     lines.append("")
 
     # ── Top Hallucination Attractors ──
     lines.append("--- TOP HALLUCINATION ATTRACTORS (most common failure predictions) ---")
-    for model in MODELS:
+    for model in active_models:
         trans = transitions.get(model, pd.DataFrame())
         if len(trans) == 0:
             continue
@@ -416,7 +472,7 @@ def generate_report(
 # Main
 # ═════════════════════════════════════════════════════════════════════════════
 
-def main(csv_path: str = DEFAULT_CSV):
+def main(csv_path: str = DEFAULT_CSV, models: Optional[Sequence[str]] = None):
     print("=" * 70)
     print("  AFS-VFM Phase 2A - Failure Boundary Analysis")
     print("=" * 70)
@@ -426,10 +482,14 @@ def main(csv_path: str = DEFAULT_CSV):
     df = pd.read_csv(csv_path)
     print(f"  Loaded {len(df):,} rows, {df['image'].nunique():,} unique images")
 
+    active_models = discover_models(df, models)
+    print(f"  Active model registry ({len(active_models)} models): {active_models}")
+
     # Ensure boolean columns are actual booleans
-    for model in MODELS:
+    for model in active_models:
         col = f"{model}_failure"
-        df[col] = df[col].astype(str).str.strip().str.lower() == "true"
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip().str.lower() == "true"
 
     # Create output directory
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -437,29 +497,29 @@ def main(csv_path: str = DEFAULT_CSV):
     os.makedirs(trans_dir, exist_ok=True)
 
     # Step 1: Extract failure boundaries
-    boundaries = extract_failure_boundaries(df)
+    boundaries = extract_failure_boundaries(df, models=active_models)
     boundaries.to_csv(os.path.join(OUTPUT_DIR, "failure_boundaries.csv"), index=False)
     print(f"         > Saved failure_boundaries.csv ({len(boundaries):,} rows)")
 
     # Step 2: Compute statistics
-    statistics = compute_failure_statistics(boundaries)
+    statistics = compute_failure_statistics(boundaries, models=active_models)
     statistics.to_csv(os.path.join(OUTPUT_DIR, "failure_statistics.csv"), index=False)
     print(f"         > Saved failure_statistics.csv ({len(statistics)} rows)")
 
     # Step 3: Statistical tests
-    tests = run_statistical_tests(boundaries)
+    tests = run_statistical_tests(boundaries, models=active_models)
     tests.to_csv(os.path.join(OUTPUT_DIR, "statistical_tests.csv"), index=False)
     print(f"         > Saved statistical_tests.csv ({len(tests)} rows)")
 
     # Step 4: Transition matrices
-    transitions = build_transition_matrices(df)
+    transitions = build_transition_matrices(df, models=active_models)
     for model, trans_df in transitions.items():
         path = os.path.join(trans_dir, f"{model}_transitions.csv")
         trans_df.to_csv(path, index=False)
         print(f"         > Saved {model}_transitions.csv ({len(trans_df)} rows)")
 
     # Step 5: Generate report
-    report = generate_report(boundaries, statistics, tests, transitions)
+    report = generate_report(boundaries, statistics, tests, transitions, models=active_models)
     report_path = os.path.join(OUTPUT_DIR, "phase2a_report.txt")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
@@ -475,5 +535,6 @@ def main(csv_path: str = DEFAULT_CSV):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="AFS-VFM Phase 2A - Failure Boundary Analysis")
     parser.add_argument("--csv", default=DEFAULT_CSV, help="Path to benchmark CSV")
+    parser.add_argument("--models", nargs="*", default=None, help="Models to evaluate (default: auto-discover)")
     args = parser.parse_args()
-    main(csv_path=args.csv)
+    main(csv_path=args.csv, models=args.models)
