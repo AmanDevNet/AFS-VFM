@@ -115,6 +115,56 @@ class SignalExtractor:
         }
 
     # ================================================================
+    # SigLIP (Pairwise Sigmoid BCE Contrastive Learning)
+    # ================================================================
+
+    def extract_siglip(self, model, processor, frame_pil: Image.Image,
+                       candidate_labels: list) -> dict:
+        """Extract internal signals from Google SigLIP for a single frame.
+
+        Unlike standard CLIP which applies softmax over candidate text tokens,
+        SigLIP formulates language-image alignment as pairwise binary cross-entropy,
+        yielding independent sigmoid probabilities per label:
+            probs = sigmoid(logits_per_image)
+        """
+        inputs = processor(
+            text=candidate_labels, images=frame_pil,
+            return_tensors="pt", padding="max_length"
+        ).to(self.device)
+
+        with torch.no_grad():
+            outputs = model(**inputs)
+
+            # Image embedding
+            if hasattr(outputs, "image_embeds") and outputs.image_embeds is not None:
+                image_embedding = outputs.image_embeds[0].cpu().numpy()
+            elif hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
+                image_embedding = outputs.last_hidden_state[0, 0].cpu().numpy()
+            else:
+                image_embedding = outputs[0][0].cpu().numpy()
+
+            # Logits per image
+            logits_per_image = outputs.logits_per_image[0]  # (n_labels,)
+
+        # Pairwise sigmoid probabilities (defining characteristic of SigLIP)
+        probs = torch.sigmoid(logits_per_image).cpu().numpy()
+        raw_logits = logits_per_image.cpu().numpy()
+
+        sorted_idx = np.argsort(probs)[::-1]
+        top1_conf = float(probs[sorted_idx[0]])
+        logit_margin = float(probs[sorted_idx[0]] - probs[sorted_idx[1]])
+        prediction = candidate_labels[sorted_idx[0]]
+
+        return {
+            "image_embedding": image_embedding,
+            "full_logits": raw_logits,
+            "full_probs": probs,
+            "top1_confidence": top1_conf,
+            "logit_margin": logit_margin,
+            "prediction": prediction,
+        }
+
+    # ================================================================
     # DETR
     # ================================================================
 
@@ -177,6 +227,43 @@ class SignalExtractor:
             "num_detections_above_threshold": n_above_thresh,
             "prediction": prediction,
         }
+
+    # ================================================================
+    # Unified Extractor Dispatcher
+    # ================================================================
+
+    def extract(self, model_name: str, model, processor, frame_pil: Image.Image, **kwargs) -> dict:
+        """Unified signal extraction dispatcher across all supported vision foundation models.
+
+        Parameters
+        ----------
+        model_name : str
+            One of: 'dinov2', 'dinov2_base', 'dinov2_large', 'clip', 'siglip', 'detr'.
+        model :
+            Loaded vision model in evaluation mode.
+        processor :
+            Corresponding feature processor/tokenizer.
+        frame_pil : Image.Image
+            RGB image frame.
+        **kwargs :
+            Additional parameters (e.g. candidate_labels for CLIP / SigLIP).
+        """
+        key = model_name.strip().lower().replace("-", "_")
+        if "dinov2" in key:
+            return self.extract_dinov2(model, processor, frame_pil)
+        elif "siglip" in key:
+            candidate_labels = kwargs.get("candidate_labels", [])
+            return self.extract_siglip(model, processor, frame_pil, candidate_labels)
+        elif "clip" in key:
+            candidate_labels = kwargs.get("candidate_labels", [])
+            return self.extract_clip(model, processor, frame_pil, candidate_labels)
+        elif "detr" in key:
+            return self.extract_detr(model, processor, frame_pil)
+        else:
+            raise ValueError(
+                f"Unsupported model_name '{model_name}'. "
+                f"Expected one of: 'dinov2', 'dinov2_large', 'clip', 'siglip', 'detr'."
+            )
 
     # ================================================================
     # Computed Metrics

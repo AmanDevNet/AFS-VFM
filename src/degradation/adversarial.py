@@ -49,7 +49,7 @@ class AdversarialAttacker:
         # Detect model architecture type
         class_name = model.__class__.__name__.lower()
 
-        if "clip" in class_name:
+        if "clip" in class_name or "siglip" in class_name:
             if hasattr(model, "get_image_features"):
                 feat = model.get_image_features(pixel_values=pixel_values)
             else:
