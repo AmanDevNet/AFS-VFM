@@ -10,12 +10,16 @@ Public API
 - ``CompoundDegradation``           — multi-corruption composition
 - ``COMPOUND_RECIPES``              — canonical benchmark recipes
 - ``load_image`` / ``save_image``   — image I/O helpers
+- ``AdversarialAttacker``           — FGSM and PGD gradient feature stress testing
+- ``gaussian_noise``, ``fog_haze``, ``contrast`` — semantic environmental corruptions
 """
 
 from .degradation import DegradationPipeline, generate_degradation_sequence
 from .scheduler import SeverityScheduler
 from .compound import CompoundDegradation, COMPOUND_RECIPES
 from .utils import load_image, save_image
+from .adversarial import AdversarialAttacker
+from .transformations import gaussian_noise, fog_haze, contrast
 
 __all__ = [
     "DegradationPipeline",
@@ -25,4 +29,8 @@ __all__ = [
     "COMPOUND_RECIPES",
     "load_image",
     "save_image",
+    "AdversarialAttacker",
+    "gaussian_noise",
+    "fog_haze",
+    "contrast",
 ]

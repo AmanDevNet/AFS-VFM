@@ -65,6 +65,13 @@ class CompoundDegradation:
         "pixelate": transformations.scale,
         "viewpoint": transformations.viewpoint,
         "shear": transformations.viewpoint,
+        "gaussian_noise": transformations.gaussian_noise,
+        "noise": transformations.gaussian_noise,
+        "fog": transformations.fog_haze,
+        "fog_haze": transformations.fog_haze,
+        "haze": transformations.fog_haze,
+        "contrast": transformations.contrast,
+        "glare": transformations.contrast,
     }
 
     @classmethod

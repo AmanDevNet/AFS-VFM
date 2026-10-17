@@ -31,6 +31,13 @@ _TYPE_ALIASES: dict[str, str] = {
     "pixelate": "scale",
     "viewpoint": "viewpoint",
     "shear": "viewpoint",
+    "gaussian_noise": "gaussian_noise",
+    "noise": "gaussian_noise",
+    "fog": "fog_haze",
+    "fog_haze": "fog_haze",
+    "haze": "fog_haze",
+    "contrast": "contrast",
+    "glare": "contrast",
 }
 
 
@@ -46,6 +53,8 @@ class DegradationPipeline:
         'step_shock', or 'oscillatory' (default 'linear').
     schedule_params : dict, optional
         Parameters passed to the SeverityScheduler (e.g. gamma, shock_frame).
+    transform_params : dict, optional
+        Parameters passed to the underlying transform (e.g. occlusion mode, texture).
     """
 
     # Mapping from canonical degradation name → implementation function
@@ -55,6 +64,9 @@ class DegradationPipeline:
         "lighting": transformations.lighting,
         "scale": transformations.scale,
         "viewpoint": transformations.viewpoint,
+        "gaussian_noise": transformations.gaussian_noise,
+        "fog_haze": transformations.fog_haze,
+        "contrast": transformations.contrast,
     }
 
     def __init__(
@@ -105,6 +117,21 @@ class DegradationPipeline:
     def viewpoint(image: np.ndarray, severity: float) -> np.ndarray:
         """Apply 3D perspective warp. See ``transformations.viewpoint``."""
         return transformations.viewpoint(image, severity)
+
+    @staticmethod
+    def gaussian_noise(image: np.ndarray, severity: float) -> np.ndarray:
+        """Apply Gaussian sensor noise. See ``transformations.gaussian_noise``."""
+        return transformations.gaussian_noise(image, severity)
+
+    @staticmethod
+    def fog_haze(image: np.ndarray, severity: float) -> np.ndarray:
+        """Apply atmospheric fog/haze. See ``transformations.fog_haze``."""
+        return transformations.fog_haze(image, severity)
+
+    @staticmethod
+    def contrast(image: np.ndarray, severity: float) -> np.ndarray:
+        """Apply dynamic range / contrast reduction. See ``transformations.contrast``."""
+        return transformations.contrast(image, severity)
 
     @staticmethod
     def compound(

@@ -240,3 +240,77 @@ def viewpoint(image: np.ndarray, severity: float) -> np.ndarray:
     
     return out
 
+
+# ---------------------------------------------------------------------------
+# 6. Gaussian Noise (Sensor Electronics Noise)
+# ---------------------------------------------------------------------------
+
+def gaussian_noise(image: np.ndarray, severity: float) -> np.ndarray:
+    """Apply additive Gaussian sensor noise modeling digital camera ISO grain.
+
+    Args:
+        image: RGB uint8 array of shape (H, W, 3).
+        severity: Float in [0, 1] controlling noise standard deviation.
+
+    Returns:
+        Noisy RGB uint8 image of the same shape.
+    """
+    if severity <= 0.0:
+        return image.copy()
+    seed = int(severity * 10000) + 77
+    rs = np.random.RandomState(seed)
+    sigma = severity * 60.0
+    noise = rs.normal(0.0, sigma, size=image.shape)
+    noisy = image.astype(np.float32) + noise
+    return np.clip(noisy, 0.0, 255.0).astype(np.uint8)
+
+
+# ---------------------------------------------------------------------------
+# 7. Fog / Atmospheric Haze (Koschmieder Optical Scattering)
+# ---------------------------------------------------------------------------
+
+def fog_haze(image: np.ndarray, severity: float) -> np.ndarray:
+    """Apply atmospheric scattering/haze based on Koschmieder's optical model.
+
+    Args:
+        image: RGB uint8 array of shape (H, W, 3).
+        severity: Float in [0, 1] controlling atmospheric scattering density.
+
+    Returns:
+        Hazy/foggy RGB uint8 image of the same shape.
+    """
+    if severity <= 0.0:
+        return image.copy()
+    h, w = image.shape[:2]
+    # Atmospheric light vector (soft bright white/gray veil)
+    atmospheric_light = 240.0
+    # Depth-correlated optical transmission: vertical distance gradient
+    y_coords = np.linspace(0.4, 1.0, h, dtype=np.float32)[:, None, None]
+    beta = severity * 1.8
+    transmission = np.exp(-beta * y_coords)
+    transmission = np.clip(transmission, 0.05, 1.0)
+    hazy = image.astype(np.float32) * transmission + atmospheric_light * (1.0 - transmission)
+    return np.clip(hazy, 0.0, 255.0).astype(np.uint8)
+
+
+# ---------------------------------------------------------------------------
+# 8. Contrast (Dynamic Range Compression / Glare)
+# ---------------------------------------------------------------------------
+
+def contrast(image: np.ndarray, severity: float) -> np.ndarray:
+    """Apply dynamic range / contrast attenuation (modeling optical glare or sensor wash-out).
+
+    Args:
+        image: RGB uint8 array of shape (H, W, 3).
+        severity: Float in [0, 1] controlling contrast reduction.
+
+    Returns:
+        Low-contrast RGB uint8 image of the same shape.
+    """
+    if severity <= 0.0:
+        return image.copy()
+    mean_val = float(np.mean(image))
+    factor = max(0.05, 1.0 - (severity * 0.90))
+    out = mean_val + factor * (image.astype(np.float32) - mean_val)
+    return np.clip(out, 0.0, 255.0).astype(np.uint8)
+
