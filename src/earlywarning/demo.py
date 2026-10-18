@@ -25,24 +25,41 @@ PHASE2C = os.path.join(ROOT, "results", "phase2c")
 FIG_DIR = os.path.join(ROOT, "results", "figures")
 
 
-def build_simulated_trajectory(model, n_frames=20):
-    """Build a realistic trajectory from Phase 2C failure-aligned signals."""
-    df = pd.read_csv(os.path.join(PHASE2C, "failure_aligned_signals.csv"))
-    mdata = df[df["model"] == model].sort_values("relative_frame")
+def build_simulated_trajectory(model: str, n_frames: int = 20):
+    """Build a realistic trajectory from Phase 2C failure-aligned signals or synthetic fallback."""
+    csv_path = os.path.join(PHASE2C, "failure_aligned_signals.csv")
+    mdata = pd.DataFrame()
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path)
+            if "model" in df.columns:
+                mdata = df[df["model"] == model].sort_values("relative_frame")
+        except Exception:
+            mdata = pd.DataFrame()
 
-    if model == "detr" or mdata.empty or mdata.iloc[0:1]["cosine_sim_mean"].isna().all():
-        # Simulate with synthetic data for DETR (no cosine_sim data)
-        np.random.seed(42)
+    failure_frame = int(n_frames * 0.65)  # e.g., frame 13 of 20
+
+    # If model is DETR, or data is missing/empty, synthesize a trajectory
+    if model == "detr" or mdata.empty:
+        np.random.seed(42 + abs(hash(model)) % 1000)
         trajectory = []
         for frame in range(1, n_frames + 1):
-            t = frame / n_frames
-            noise = np.random.normal(0, 0.02)
-            conf = max(0.05, 0.85 - 0.6 * t**2 + noise)
-            trajectory.append({"top_detection_confidence": conf})
-        return trajectory, int(n_frames * 0.7)
+            rel = (frame - failure_frame) / 4.0
+            sig_factor = 1.0 / (1.0 + np.exp(rel * 2.0))  # sigmoid drop around failure
+            noise = float(np.random.normal(0, 0.015))
 
-    # For DINOv2/CLIP: use the failure-aligned mean trajectory
-    # Map relative frames (-5 to +5) to absolute frames around a failure at frame 12
+            if model == "detr":
+                conf = float(np.clip(0.20 + 0.65 * sig_factor + noise, 0.05, 0.95))
+                cos = float(np.clip(0.40 + 0.55 * sig_factor + noise, 0.20, 0.99))
+                trajectory.append({"top_detection_confidence": conf, "cosine_sim": cos})
+            else:
+                conf = float(np.clip(0.22 + 0.68 * sig_factor + noise, 0.05, 0.98))
+                margin = float(np.clip(0.25 + 2.45 * sig_factor + noise * 5, 0.05, 3.50))
+                cos = float(np.clip(0.45 + 0.50 * sig_factor + noise, 0.20, 0.99))
+                trajectory.append({"top1_confidence": conf, "logit_margin": margin, "cosine_sim": cos})
+        return trajectory, failure_frame
+
+    # For models with real failure-aligned data (e.g. DINOv2 / CLIP in Phase 2C)
     failure_frame = 12
     trajectory = []
 
@@ -60,9 +77,7 @@ def build_simulated_trajectory(model, n_frames=20):
                 continue
 
         # Interpolate for frames outside the data range
-        t = frame / n_frames
         if frame < failure_frame - 5:
-            # Before the pre-failure window: stable high signals
             first_row = mdata[mdata["relative_frame"] == -5]
             base = {}
             for sig in ["top1_confidence", "logit_margin", "cosine_sim"]:
@@ -73,7 +88,6 @@ def build_simulated_trajectory(model, n_frames=20):
                         base[sig] = float(val) + np.random.normal(0, 0.01)
             trajectory.append(base if base else {"top1_confidence": 0.8})
         else:
-            # After failure: low signals with noise
             last_row = mdata[mdata["relative_frame"] == 5]
             base = {}
             for sig in ["top1_confidence", "logit_margin", "cosine_sim"]:
@@ -87,13 +101,16 @@ def build_simulated_trajectory(model, n_frames=20):
     return trajectory, failure_frame
 
 
-def run_demo():
-    """Run the full demo for DINOv2 and CLIP."""
+def run_demo(models=None, n_frames=20):
+    """Run the early warning demo across specified models."""
+    if models is None:
+        models = ["dinov2", "clip"]
+
     print("=" * 70)
     print("  AFS-VFM - Failure Early Warning System Demo")
     print("=" * 70)
 
-    # First, learn thresholds if not already done
+    # Learn thresholds if not already done
     thr_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "thresholds.json")
     if not os.path.exists(thr_path):
         print("\n  Learning thresholds first...")
@@ -102,27 +119,29 @@ def run_demo():
 
     predictor = FailurePredictor(thr_path)
 
-    for model in ["dinov2", "clip"]:
+    for model in models:
+        model_key = model.lower()
+        if model_key not in predictor.thresholds:
+            print(f"\n  [SKIP] Model '{model}' not configured in thresholds.json")
+            continue
+
         print(f"\n{'-' * 70}")
         print(f"  Model: {model.upper()}")
         print(f"{'-' * 70}")
 
-        trajectory, actual_failure = build_simulated_trajectory(model)
-        result = predictor.assess_trajectory(model, trajectory)
+        trajectory, actual_failure = build_simulated_trajectory(model_key, n_frames=n_frames)
+        result = predictor.assess_trajectory(model_key, trajectory)
 
         # Print timeline
         print(f"\n  Frame | Status   | Prob  | Triggering Signals")
         print(f"  ------+----------+-------+--------------------")
 
-        statuses = []
-        probs = []
         for r in result["trajectory"]:
             frame = r["frame"]
             status = r["status"]
             prob = r["failure_probability"]
             triggers = ", ".join(r["triggering_signals"]) if r["triggering_signals"] else "-"
 
-            # Color coding in terminal
             marker = "  "
             if frame == actual_failure:
                 marker = "<< ACTUAL FAILURE"
@@ -134,12 +153,9 @@ def run_demo():
                 marker = "[.]"
 
             print(f"  {frame:5d} | {status:8s} | {prob:.3f} | {triggers}  {marker}")
-            statuses.append(status)
-            probs.append(prob)
 
         # Summary
         fw = result["first_warning_frame"]
-        fc = result["first_critical_frame"]
         if fw and fw < actual_failure:
             lead = actual_failure - fw
             print(f"\n  [OK] WARNING appeared at frame {fw}, {lead} frames BEFORE failure!")
@@ -149,7 +165,7 @@ def run_demo():
             print(f"\n  [XX] No warning detected before failure at frame {actual_failure}")
 
         # Generate visualization
-        _plot_timeline(model, result, actual_failure, trajectory)
+        _plot_timeline(model_key, result, actual_failure, trajectory)
 
     print(f"\n{'=' * 70}")
     print(f"  Demo complete. Visualizations saved to: {FIG_DIR}")
@@ -176,11 +192,14 @@ def _plot_timeline(model, result, actual_failure, trajectory):
                  fontsize=16, fontweight="bold", y=0.95)
 
     frames = [r["frame"] for r in result["trajectory"]]
-    probs = [r["failure_probability"] for r in result["trajectory"]]
 
-    # Top: signal values
-    signal_colors = {"top1_confidence": "#3498db", "logit_margin": "#2ecc71",
-                     "cosine_sim": "#9b59b6", "top_detection_confidence": "#e67e22"}
+    # Signal styling
+    signal_colors = {
+        "top1_confidence": "#3498db",
+        "logit_margin": "#2ecc71",
+        "cosine_sim": "#9b59b6",
+        "top_detection_confidence": "#e67e22"
+    }
     all_signals = set()
     for t in trajectory:
         all_signals.update(t.keys())
@@ -236,4 +255,10 @@ def _plot_timeline(model, result, actual_failure, trajectory):
 
 
 if __name__ == "__main__":
-    run_demo()
+    import argparse
+    parser = argparse.ArgumentParser(description="AFS-VFM Early Warning System Demo")
+    parser.add_argument("--models", nargs="+", default=["dinov2", "clip"],
+                        help="Models to simulate: dinov2 clip detr siglip dinov2_large")
+    parser.add_argument("--n_frames", type=int, default=20, help="Number of frames in simulation")
+    args = parser.parse_args()
+    run_demo(models=args.models, n_frames=args.n_frames)
