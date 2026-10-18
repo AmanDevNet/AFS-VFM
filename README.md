@@ -6,9 +6,9 @@
 
 *Systematically stress-testing state-of-the-art AI vision models to discover exactly when — and why — they break.*
 
-> **Research into anticipatory failure signals in vision foundation models — DINOv2, CLIP, DETR. Targeting BMVC/WACV.**
+> **Research into anticipatory failure signals in vision foundation models — DINOv2 (Base/Large), CLIP, SigLIP, DETR. Targeting BMVC/WACV.**
 
-`computer-vision` • `vision-transformers` • `deep-learning` • `pytorch` • `huggingface` • `research` • `dinov2` • `clip` • `image-classification` • `robustness`
+`computer-vision` • `vision-transformers` • `deep-learning` • `pytorch` • `huggingface` • `research` • `dinov2` • `clip` • `siglip` • `detr` • `robustness` • `early-warning`
 
 <br/>
 
@@ -16,11 +16,11 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org)
 [![HuggingFace](https://img.shields.io/badge/HuggingFace-Transformers-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Phase%202%20Complete%20(~80%25)-blue)]()
+[![Status](https://img.shields.io/badge/Status-Phase%203%20Early%20Warning%20Active-blue)]()
 
 <br/>
 
-**150,000 model inferences** · **3 foundation models** · **5 degradation types** · **1,500 benchmark images**
+**150,000+ model inferences** · **5 foundation models** · **5 core degradations + adversarial & semantic suite** · **1,500 benchmark images**
 
 </div>
 
@@ -30,9 +30,11 @@
 
 - [The Problem](#-the-problem)
 - [Our Approach](#-our-approach)
+- [Supported Foundation Models](#-supported-foundation-models)
 - [System Architecture](#-system-architecture)
 - [Degradation Engine (Track A)](#-degradation-engine--track-a)
 - [Model Inference Pipeline (Track B)](#-model-inference-pipeline--track-b)
+- [Phase 3 Early Warning System](#-phase-3-early-warning-system)
 - [Key Results So Far](#-key-results-so-far)
 - [Project Roadmap](#-project-roadmap)
 - [Tech Stack](#-tech-stack)
@@ -42,11 +44,11 @@
 
 ## 🧠 The Problem
 
-Vision Foundation Models (VFMs) like **DINOv2**, **CLIP**, and **DETR** achieve near-perfect accuracy on clean benchmark datasets. But the real world is messy — camera lenses get dirty, lighting drops, objects move, perspectives shift.
+Vision Foundation Models (VFMs) like **DINOv2**, **CLIP**, **SigLIP**, and **DETR** achieve near-perfect accuracy on clean benchmark datasets. But the real world is messy — camera lenses get dirty, lighting drops, objects move, perspectives shift.
 
 > **At what exact point does a state-of-the-art AI vision model stop *seeing* and start *guessing*?**
 
-Current robustness benchmarks (ImageNet-C, COCO-C) test models at discrete corruption levels. They tell you *that* a model failed — but not *when* the internal signal crossed the tipping point. **AFS-VFM** fills that gap.
+Current robustness benchmarks (ImageNet-C, COCO-C) test models at discrete corruption levels. They tell you *that* a model failed — but not *when* the internal signal crossed the tipping point. **AFS-VFM** fills that gap by isolating anticipatory signals that precede failure.
 
 ---
 
@@ -54,13 +56,17 @@ Current robustness benchmarks (ImageNet-C, COCO-C) test models at discrete corru
 
 Instead of testing models on a single corrupted image, we generate a **20-frame temporal degradation sequence** where corruption intensity increases linearly from **0% to 100%**. This allows us to pinpoint the **exact frame** where each model's prediction transitions from correct to incorrect — the **failure boundary**.
 
-We then compare three architecturally distinct foundation models on the same degradation sequences to understand how different learned representations handle identical real-world stress:
+We compare five architecturally distinct foundation models across diverse pre-training paradigms:
 
-| Model | Architecture | Task | Paradigm |
-|-------|-------------|------|----------|
-| **DINOv2** (`facebook/dinov2-base-imagenet1k-1-layer`) | ViT-B/14 | Image Classification | Self-Supervised Learning |
-| **CLIP** (`openai/clip-vit-base-patch32`) | ViT-B/32 + Text Encoder | Zero-Shot Classification | Contrastive Language-Image Pre-training |
-| **DETR** (`facebook/detr-resnet-50`) | ResNet-50 + Transformer | Object Detection | End-to-End Detection |
+## 🤖 Supported Foundation Models
+
+| Model | Architecture | Task | Paradigm | Dimensions / Head |
+|-------|-------------|------|----------|-------------------|
+| **DINOv2-Base** (`facebook/dinov2-base-imagenet1k-1-layer`) | ViT-B/14 | Image Classification | Self-Supervised Learning | 768-d |
+| **DINOv2-Large** (`facebook/dinov2-large-imagenet1k-1-layer`) | ViT-L/14 | Image Classification | Self-Supervised Learning | 1024-d |
+| **CLIP** (`openai/clip-vit-base-patch32`) | ViT-B/32 + Text Transformer | Zero-Shot Classification | Contrastive (Softmax) | 512-d |
+| **SigLIP** (`google/siglip-base-patch16-224`) | ViT-B/16 + Text Transformer | Zero-Shot Classification | Pairwise Sigmoid BCE | 768-d |
+| **DETR** (`facebook/detr-resnet-50`) | ResNet-50 + Transformer Decoder | Object Detection | Bipartite Matching Loss | 256-d |
 
 ---
 
@@ -191,8 +197,51 @@ We extracted **90,000 internal brain signals** (logits, embeddings, confidence s
 #### Breakthrough Discoveries
 
 1. **DINOv2 is the Most Robust:** Across all 5 degradation types, DINOv2 survived the longest (33.9% average survival), outperforming CLIP (23.4%) and DETR (16.5%).
-2. **Anticipatory Signals Exist (Hypothesis Proven):** We mathematically proved that internal model signals drop **3 to 5 frames BEFORE** the model's final prediction actually changes.
-3. **Failure is Predictable:** By analyzing specific internal metrics (like CLIP's logit margin), we can predict an upcoming AI failure with very high accuracy (AUROC = 0.822) frames before the failure occurs.
+2. **Anticipatory Signals Exist (Hypothesis Proven):** We mathematically proved that internal model signals drop **2 to 5 frames BEFORE** the model's final prediction actually changes.
+3. **Failure is Predictable:** By analyzing specific internal metrics (like logit margins and cosine embedding shifts), we predict imminent AI failure with high statistical significance before output corruption occurs.
+
+---
+
+## ⚡ Phase 3 Early Warning System: ✅ Active
+
+The Phase 3 early warning system continuously monitors internal foundation model health during visual degradation and raises alerts prior to task-level failure:
+
+```
+  Clean Visual Stream
+           │
+           ▼
+  Internal Signal Extraction (Confidence, Logit Margins, Cosine Drift)
+           │
+           ▼
+  Threshold Predictor (Learned via ROC/AUC on empirical failure trajectories)
+           │
+     ┌─────┴──────────────┐
+     ▼                    ▼
+  [OK]            [WARNING / CRITICAL]
+  (Healthy)       (2–4 frames BEFORE prediction divergence)
+```
+
+### Running the Early Warning Demo
+
+Run the interactive multi-model simulation across all 5 foundation models:
+
+```bash
+# Run demo for all 5 foundation models
+python -m src.earlywarning.demo --models dinov2 clip detr siglip dinov2_large
+
+# Run regression test suite
+python verify_early_warning.py
+```
+
+### Running Benchmark with Flexible Model Selection
+
+```bash
+# Quick pilot test on a subset of images
+python main.py --pilot --models dinov2 clip siglip
+
+# Run specific batch with all 5 models
+python main.py --batch 1 --models dinov2 dinov2_large clip siglip detr
+```
 
 ---
 
@@ -201,21 +250,21 @@ We extracted **90,000 internal brain signals** (logits, embeddings, confidence s
 ```text
 Phase 1 — Infrastructure & Data Generation ███████████████████████████████ 100%  ✅
 Phase 2 — Statistical Analysis & Failure Mapping ███████████████████████████████ 100%  ✅
-Phase 3 — Visualization Dashboard & Paper ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%   🔜
+Phase 3 — Early Warning System & Paper ███████████████████████████████  85%   🚀
 ```
 
 | Phase | Milestone | Status | Description |
 |-------|-----------|--------|-------------|
-| **1.1** | Degradation Engine | ✅ Complete | 5-type deterministic corruption engine with clean API |
-| **1.2** | Model Loader | ✅ Complete | DINOv2, CLIP, DETR loading with auto-device detection |
+| **1.1** | Degradation Engine | ✅ Complete | 5-type deterministic corruption engine + semantic/adversarial extensions |
+| **1.2** | Model Loader | ✅ Complete | Dynamic loading for DINOv2 (Base/Large), CLIP, SigLIP, DETR |
 | **1.3** | Integration Test | ✅ Complete | End-to-end pipeline validation (Track A ↔ Track B) |
-| **1.4** | Full Benchmark Run | ✅ Complete | 150,000 inferences across 1,500 images on Kaggle T4 GPU |
-| **2.1** | Failure Boundary Analysis | ✅ Complete | Mathematical identification of per-model, per-degradation breaking points |
-| **2.2** | Cross-Model Comparison | ✅ Complete | Statistical comparison of failure patterns across DINOv2 / CLIP / DETR |
+| **1.4** | Full Benchmark Run | ✅ Complete | 150,000+ inferences across 1,500 images |
+| **2.1** | Failure Boundary Analysis | ✅ Complete | Dynamic model discovery and per-degradation breaking points |
+| **2.2** | Cross-Model Comparison | ✅ Complete | Statistical comparison across self-supervised, contrastive, and detection paradigms |
 | **2.3** | Internal Signal Probing | ✅ Complete | Embedding drift, attention entropy, logit margin analysis |
-| **3.1** | Visualization & Dashboard | 🔜 Next | Publication-quality figure generation and failure curves |
-| **3.2** | Early Warning Prototype | 📋 Planned | Live monitoring system to warn of imminent AI failure |
-| **3.3** | Research Paper | 📋 Planned | Formal write-up of methodology, findings, and implications |
+| **3.1** | Visualization Dashboard | ✅ Complete | Publication-quality timeline figures and early warning overlays |
+| **3.2** | Early Warning Prototype | ✅ Complete | Multi-model health predictor with calibrated threshold trigger engine |
+| **3.3** | Research Paper | 📝 In Progress | Formal write-up for BMVC/WACV submission |
 
 ---
 
