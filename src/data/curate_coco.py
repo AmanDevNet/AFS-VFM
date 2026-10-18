@@ -6,11 +6,15 @@ from PIL import Image
 from io import BytesIO
 from collections import defaultdict
 
+import argparse
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def curate_coco(num_images=500, target_size=(224, 224)):
-    # Create target directory
-    save_dir = os.path.join(BASE_DIR, "data", "coco")
+def curate_coco(num_images=500, target_size=(224, 224), out_dir=None):
+    if out_dir is None:
+        save_dir = os.path.join(BASE_DIR, "data", "coco_val")
+    else:
+        save_dir = out_dir
     os.makedirs(save_dir, exist_ok=True)
     
     print("Downloading official COCO val2017 annotations...")
@@ -100,5 +104,10 @@ def curate_coco(num_images=500, target_size=(224, 224)):
     print(f"Success! COCO dataset saved to {save_dir}")
     print(f"Ground truth mapping saved to {labels_path}")
 
+
 if __name__ == "__main__":
-    curate_coco(500)
+    parser = argparse.ArgumentParser(description="Curate COCO val2017 dataset for AFS-VFM")
+    parser.add_argument("--num_images", type=int, default=500, help="Number of images to sample (default: 500)")
+    parser.add_argument("--out_dir", type=str, default=None, help="Output directory path (default: data/coco_val)")
+    args = parser.parse_args()
+    curate_coco(num_images=args.num_images, out_dir=args.out_dir)
