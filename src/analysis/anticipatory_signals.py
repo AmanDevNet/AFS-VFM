@@ -15,12 +15,20 @@ Produces:
   3. Survived vs failed comparison (control group)
   4. Predictability metrics (lead time, SNR, AUROC)
 
+Supports dynamic multi-model signal evaluation across standard and expanded
+models (DINOv2-Base, DINOv2-Large, CLIP, SigLIP, DETR).
+
 Usage:
     python -m src.analysis.anticipatory_signals
+    python -m src.analysis.anticipatory_signals --models dinov2 clip siglip
 """
 
 import os
+import sys
+import argparse
 import warnings
+from typing import Optional, Sequence, List, Dict, Any
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -34,55 +42,82 @@ BOUNDARIES_CSV = os.path.join(ROOT_DIR, "results", "phase2a", "failure_boundarie
 SIGNALS_CSV = os.path.join(ROOT_DIR, "results", "phase2b", "signals", "frame_signals.csv")
 OUTPUT_DIR = os.path.join(ROOT_DIR, "results", "phase2c")
 
-MODELS = ["dinov2", "clip", "detr"]
+SUPPORTED_MODELS = ["dinov2", "dinov2_large", "clip", "siglip", "detr"]
+DEFAULT_MODELS = ["dinov2", "clip", "detr"]
+MODELS = DEFAULT_MODELS
 NUM_FRAMES = 20
 ANTICIPATORY_WINDOW = 5  # frames before failure to analyze
+
+
+def discover_models(
+    boundaries: pd.DataFrame,
+    signals: pd.DataFrame,
+    models: Optional[Sequence[str]] = None,
+) -> list[str]:
+    """Dynamically discover models present in boundaries and signals DataFrames."""
+    if models is not None and len(models) > 0:
+        return list(models)
+
+    boundary_models = set(boundaries["model"].dropna().unique()) if "model" in boundaries.columns else set()
+    discovered = []
+
+    # Check for models that have matching columns in signals
+    for bm in boundary_models:
+        s_bm = str(bm)
+        prefix = f"{s_bm}_"
+        if any(c.startswith(prefix) for c in signals.columns) and s_bm not in discovered:
+            discovered.append(s_bm)
+
+    if not discovered and boundary_models:
+        discovered = list(boundary_models)
+
+    return discovered if discovered else list(DEFAULT_MODELS)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Step 1: Merge failure boundaries with signal data
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def merge_boundaries_and_signals(boundaries: pd.DataFrame, signals: pd.DataFrame) -> pd.DataFrame:
+def merge_boundaries_and_signals(
+    boundaries: pd.DataFrame,
+    signals: pd.DataFrame,
+    models: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
     """For each (image, degradation, model), attach the first_failure_frame to every signal row."""
-    print("\n  [Step 1] Merging failure boundaries with signal trajectories ...")
-
-    # Boundaries has one row per (image, degradation, model) with first_failure_frame
-    # Signals has one row per (image, degradation, frame) with signals for ALL models
-    # We need to "unpivot" signals to be per-model
+    active_models = discover_models(boundaries, signals, models)
+    print(f"\n  [Step 1] Merging failure boundaries with signal trajectories for {len(active_models)} models: {active_models} ...")
 
     all_merged = []
 
-    for model in MODELS:
+    for model in active_models:
         # Get boundary data for this model
         model_bounds = boundaries[boundaries["model"] == model][
             ["image", "degradation", "first_failure_frame", "survived"]
         ].copy()
 
-        # Get signal columns for this model
-        if model == "dinov2":
-            sig_cols = ["dinov2_top1_confidence", "dinov2_logit_margin",
-                        "dinov2_cosine_sim", "dinov2_l2_distance", "dinov2_top5_overlap"]
-        elif model == "clip":
-            sig_cols = ["clip_top1_confidence", "clip_logit_margin",
-                        "clip_cosine_sim", "clip_l2_distance"]
-        else:  # detr
-            detr_candidates = [
-                "detr_top_detection_confidence", "detr_objectness",
-                "detr_num_detections", "detr_cosine_sim", "detr_l2_distance"
-            ]
-            sig_cols = [c for c in detr_candidates if c in signals.columns]
-            if not sig_cols:
-                sig_cols = ["detr_top_detection_confidence", "detr_objectness", "detr_num_detections"]
+        if model_bounds.empty:
+            continue
+
+        prefix = f"{model}_"
+        sig_cols = [c for c in signals.columns if c.startswith(prefix)]
+
+        # Fallback candidate check if exact prefix list was not found
+        if not sig_cols:
+            if "dinov2" in model:
+                sig_cols = [c for c in [f"{model}_top1_confidence", f"{model}_logit_margin", f"{model}_cosine_sim", f"{model}_l2_distance", f"{model}_top5_overlap"] if c in signals.columns]
+            elif "clip" in model or "siglip" in model:
+                sig_cols = [c for c in [f"{model}_top1_confidence", f"{model}_logit_margin", f"{model}_cosine_sim", f"{model}_l2_distance"] if c in signals.columns]
+            elif "detr" in model:
+                sig_cols = [c for c in [f"{model}_top_detection_confidence", f"{model}_objectness", f"{model}_num_detections", f"{model}_cosine_sim", f"{model}_l2_distance"] if c in signals.columns]
+
+        if not sig_cols:
+            continue
 
         # Subset signals to relevant columns
         sig_subset = signals[["image", "degradation", "frame", "severity_pct"] + sig_cols].copy()
 
         # Rename to generic names for unified analysis
-        rename_map = {}
-        for col in sig_cols:
-            generic = col.replace(f"{model}_", "")
-            rename_map[col] = generic
+        rename_map = {col: col[len(prefix):] if col.startswith(prefix) else col.replace(f"{model}_", "") for col in sig_cols}
         sig_subset = sig_subset.rename(columns=rename_map)
 
         # Merge with boundaries
@@ -98,6 +133,9 @@ def merge_boundaries_and_signals(boundaries: pd.DataFrame, signals: pd.DataFrame
 
         all_merged.append(merged)
 
+    if not all_merged:
+        return pd.DataFrame()
+
     result = pd.concat(all_merged, ignore_index=True)
     n_failed = result[~result["survived"]].drop_duplicates(["image", "degradation", "model"]).shape[0]
     n_survived = result[result["survived"]].drop_duplicates(["image", "degradation", "model"]).shape[0]
@@ -111,17 +149,18 @@ def merge_boundaries_and_signals(boundaries: pd.DataFrame, signals: pd.DataFrame
 # Step 2: Failure-Aligned Signal Analysis
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def analyze_failure_aligned_signals(merged: pd.DataFrame) -> pd.DataFrame:
+def analyze_failure_aligned_signals(
+    merged: pd.DataFrame, models: Optional[Sequence[str]] = None
+) -> pd.DataFrame:
     """Compute average signal values at each relative frame position."""
-    print("\n  [Step 2] Building failure-aligned signal profiles ...")
+    active_models = [m for m in (models or merged["model"].dropna().unique()) if m in merged["model"].values]
+    print(f"\n  [Step 2] Building failure-aligned signal profiles for {len(active_models)} models ...")
 
     failed = merged[~merged["survived"]].copy()
-
-    # For each model, compute mean signal at each relative frame
     records = []
-    signal_cols = ["top1_confidence", "logit_margin", "cosine_sim"]
+    signal_cols = ["top1_confidence", "logit_margin", "cosine_sim", "top_detection_confidence", "objectness"]
 
-    for model in MODELS:
+    for model in active_models:
         model_data = failed[failed["model"] == model]
 
         # Only look at relative frames from -WINDOW to +5
@@ -150,8 +189,8 @@ def analyze_failure_aligned_signals(merged: pd.DataFrame) -> pd.DataFrame:
     result = pd.DataFrame(records)
     print(f"         {len(result)} aligned profile points computed")
 
-    # Print the key insight: do signals drop BEFORE failure?
-    for model in MODELS:
+    # Print key insight
+    for model in active_models:
         m = result[result["model"] == model]
         if "cosine_sim_mean" in m.columns and len(m) > 0:
             pre = m[m["relative_frame"] == -1]
@@ -171,22 +210,34 @@ def analyze_failure_aligned_signals(merged: pd.DataFrame) -> pd.DataFrame:
 # Step 3: Pre-Failure Window Statistics
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def compute_prefailure_statistics(merged: pd.DataFrame) -> pd.DataFrame:
+def compute_prefailure_statistics(
+    merged: pd.DataFrame, models: Optional[Sequence[str]] = None
+) -> pd.DataFrame:
     """For each failed triplet, compute signal slope and acceleration in the pre-failure window."""
-    print("\n  [Step 3] Computing pre-failure window statistics ...")
+    active_models = [m for m in (models or merged["model"].dropna().unique()) if m in merged["model"].values]
+    print(f"\n  [Step 3] Computing pre-failure window statistics for {len(active_models)} models ...")
 
     failed = merged[~merged["survived"]].copy()
     records = []
 
-    signal_cols = {
+    canonical_signal_cols = {
         "dinov2": ["top1_confidence", "logit_margin", "cosine_sim", "l2_distance", "top5_overlap"],
+        "dinov2_large": ["top1_confidence", "logit_margin", "cosine_sim", "l2_distance", "top5_overlap"],
         "clip": ["top1_confidence", "logit_margin", "cosine_sim", "l2_distance"],
-        "detr": ["top_detection_confidence", "objectness", "cosine_sim"],
+        "siglip": ["top1_confidence", "logit_margin", "cosine_sim", "l2_distance"],
+        "detr": ["top_detection_confidence", "objectness", "cosine_sim", "l2_distance"],
     }
 
-    for model in MODELS:
+    metadata_cols = {"image", "degradation", "model", "frame", "severity_pct", "first_failure_frame", "survived", "relative_frame"}
+
+    for model in active_models:
         model_data = failed[failed["model"] == model]
         triplets = model_data.groupby(["image", "degradation"])
+
+        # Determine target signals
+        target_signals = canonical_signal_cols.get(
+            model, [c for c in model_data.columns if c not in metadata_cols and pd.api.types.is_numeric_dtype(model_data[c])]
+        )
 
         for (image, deg), group in triplets:
             fail_frame = group["first_failure_frame"].iloc[0]
@@ -208,7 +259,7 @@ def compute_prefailure_statistics(merged: pd.DataFrame) -> pd.DataFrame:
                 "window_size": len(pre_window),
             }
 
-            for sig in signal_cols.get(model, []):
+            for sig in target_signals:
                 if sig not in pre_window.columns:
                     continue
                 vals = pre_window[sig].dropna().values
@@ -233,8 +284,8 @@ def compute_prefailure_statistics(merged: pd.DataFrame) -> pd.DataFrame:
     result = pd.DataFrame(records)
     print(f"         {len(result):,} triplet windows analyzed")
 
-    # Summary: what fraction show negative trends?
-    for model in MODELS:
+    # Summary
+    for model in active_models:
         m = result[result["model"] == model]
         if "cosine_sim_negative_trend" in m.columns:
             pct = m["cosine_sim_negative_trend"].mean() * 100
@@ -250,14 +301,17 @@ def compute_prefailure_statistics(merged: pd.DataFrame) -> pd.DataFrame:
 # Step 4: Survived vs Failed Comparison
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def compare_survived_vs_failed(merged: pd.DataFrame) -> pd.DataFrame:
+def compare_survived_vs_failed(
+    merged: pd.DataFrame, models: Optional[Sequence[str]] = None
+) -> pd.DataFrame:
     """Compare signal trajectories between survived and failed triplets."""
-    print("\n  [Step 4] Comparing survived vs failed signal trajectories ...")
+    active_models = [m for m in (models or merged["model"].dropna().unique()) if m in merged["model"].values]
+    print(f"\n  [Step 4] Comparing survived vs failed signal trajectories across {len(active_models)} models ...")
 
     records = []
-    signal_cols = ["top1_confidence", "logit_margin", "cosine_sim"]
+    signal_cols = ["top1_confidence", "logit_margin", "cosine_sim", "top_detection_confidence", "objectness"]
 
-    for model in MODELS:
+    for model in active_models:
         model_data = merged[merged["model"] == model]
         survived = model_data[model_data["survived"] == True]
         failed = model_data[model_data["survived"] == False]
@@ -280,7 +334,7 @@ def compare_survived_vs_failed(merged: pd.DataFrame) -> pd.DataFrame:
                 pooled_std = np.sqrt(
                     ((len(surv_vals) - 1) * surv_vals.std() ** 2 +
                      (len(fail_vals) - 1) * fail_vals.std() ** 2) /
-                    (len(surv_vals) + len(fail_vals) - 2)
+                    max(1, (len(surv_vals) + len(fail_vals) - 2))
                 )
                 cohens_d = (surv_vals.mean() - fail_vals.mean()) / pooled_std if pooled_std > 0 else 0
 
@@ -301,8 +355,10 @@ def compare_survived_vs_failed(merged: pd.DataFrame) -> pd.DataFrame:
     result = pd.DataFrame(records)
 
     # When does the gap between survived and failed become significant?
-    for model in MODELS:
+    for model in active_models:
         m = result[(result["model"] == model) & (result["signal"] == "cosine_sim")]
+        if len(m) == 0:
+            m = result[(result["model"] == model)]
         if len(m) == 0:
             continue
         first_sig = m[m["significant"]].sort_values("frame")
@@ -319,23 +375,35 @@ def compare_survived_vs_failed(merged: pd.DataFrame) -> pd.DataFrame:
 # Step 5: Predictability Metrics (Lead Time, SNR, AUROC)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def compute_predictability(merged: pd.DataFrame, prefailure: pd.DataFrame) -> pd.DataFrame:
+def compute_predictability(
+    merged: pd.DataFrame,
+    prefailure: pd.DataFrame,
+    models: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
     """Compute lead time, signal-to-noise ratio, and AUROC for failure prediction."""
-    print("\n  [Step 5] Computing predictability metrics ...")
+    active_models = [m for m in (models or merged["model"].dropna().unique()) if m in merged["model"].values]
+    print(f"\n  [Step 5] Computing predictability metrics across {len(active_models)} models ...")
 
     records = []
 
     signal_cols = {
         "dinov2": ["cosine_sim", "top1_confidence", "logit_margin"],
+        "dinov2_large": ["cosine_sim", "top1_confidence", "logit_margin"],
         "clip": ["cosine_sim", "top1_confidence", "logit_margin"],
-        "detr": ["top_detection_confidence"],
+        "siglip": ["cosine_sim", "top1_confidence", "logit_margin"],
+        "detr": ["top_detection_confidence", "cosine_sim"],
     }
 
-    for model in MODELS:
+    for model in active_models:
         model_data = merged[merged["model"] == model]
         model_prefail = prefailure[prefailure["model"] == model]
 
-        for sig in signal_cols.get(model, []):
+        # Use model-specific signals or detect available slope columns
+        candidate_signals = signal_cols.get(
+            model, [c.replace("_slope", "") for c in model_prefail.columns if c.endswith("_slope")]
+        )
+
+        for sig in candidate_signals:
             slope_col = f"{sig}_slope"
             if slope_col not in model_prefail.columns:
                 continue
@@ -352,25 +420,24 @@ def compute_predictability(merged: pd.DataFrame, prefailure: pd.DataFrame) -> pd
             snr = abs(slopes.mean()) / slopes.std() if slopes.std() > 0 else 0
 
             # AUROC: Can the signal at frame N-2 predict failure?
-            # Binary classification: survived(0) vs failed(1)
-            # Feature: signal value at a mid-frame (frame 10)
-            survived_vals = model_data[
-                (model_data["survived"] == True) & (model_data["frame"] == 10)
-            ][sig].dropna()
-            failed_vals = model_data[
-                (model_data["survived"] == False) & (model_data["frame"] == 10)
-            ][sig].dropna()
+            if sig in model_data.columns:
+                survived_vals = model_data[
+                    (model_data["survived"] == True) & (model_data["frame"] == 10)
+                ][sig].dropna()
+                failed_vals = model_data[
+                    (model_data["survived"] == False) & (model_data["frame"] == 10)
+                ][sig].dropna()
 
-            auroc = np.nan
-            if len(survived_vals) >= 5 and len(failed_vals) >= 5:
-                labels = np.concatenate([np.zeros(len(survived_vals)), np.ones(len(failed_vals))])
-                scores = np.concatenate([survived_vals.values, failed_vals.values])
-                # For signals where higher = more robust (like cosine_sim),
-                # we need to flip so higher score = more likely to fail
-                try:
-                    auroc = roc_auc_score(labels, -scores)
-                except ValueError:
-                    auroc = np.nan
+                auroc = np.nan
+                if len(survived_vals) >= 5 and len(failed_vals) >= 5:
+                    labels = np.concatenate([np.zeros(len(survived_vals)), np.ones(len(failed_vals))])
+                    scores = np.concatenate([survived_vals.values, failed_vals.values])
+                    try:
+                        auroc = roc_auc_score(labels, -scores)
+                    except ValueError:
+                        auroc = np.nan
+            else:
+                auroc = np.nan
 
             records.append({
                 "model": model,
@@ -388,7 +455,7 @@ def compute_predictability(merged: pd.DataFrame, prefailure: pd.DataFrame) -> pd
 
     for _, row in result.iterrows():
         auroc_str = f"{row['auroc_at_frame10']:.3f}" if pd.notna(row["auroc_at_frame10"]) else "N/A"
-        print(f"         {row['model'].upper():6s} {row['signal']:25s} "
+        print(f"         {row['model'].upper():8s} {row['signal']:25s} "
               f"AUROC={auroc_str}  lead={row['lead_time_frames']:.1f}fr  "
               f"neg_trend={row['pct_negative_trend']:.0f}%")
 
@@ -404,9 +471,11 @@ def generate_report(
     prefailure: pd.DataFrame,
     comparison: pd.DataFrame,
     predictability: pd.DataFrame,
+    models: Optional[Sequence[str]] = None,
 ) -> str:
     """Generate the core research findings report."""
-    print("\n  [Step 6] Generating Phase 2C report ...")
+    active_models = [m for m in (models or prefailure["model"].dropna().unique()) if m in prefailure["model"].values]
+    print(f"\n  [Step 6] Generating Phase 2C report for {len(active_models)} models ...")
 
     lines = []
     lines.append("=" * 70)
@@ -418,13 +487,11 @@ def generate_report(
     lines.append("")
 
     # ── Verdict ──
-    # Use the predictability table's pct_negative_trend (already correctly computed)
     if len(predictability) > 0:
         overall_pct = predictability["pct_negative_trend"].mean()
     else:
         overall_pct = 0
 
-    # Also compute average AUROC
     auroc_vals = predictability["auroc_at_frame10"].dropna()
     avg_auroc = auroc_vals.mean() if len(auroc_vals) > 0 else 0
 
@@ -446,7 +513,7 @@ def generate_report(
 
     # ── Pre-failure signal trends ──
     lines.append("--- PRE-FAILURE SIGNAL TRENDS (negative = signal drops before failure) ---")
-    for model in MODELS:
+    for model in active_models:
         m = prefailure[prefailure["model"] == model]
         lines.append(f"\n  {model.upper()}:")
         for col in sorted(m.columns):
@@ -461,10 +528,12 @@ def generate_report(
 
     # ── Survived vs Failed divergence ──
     lines.append("--- SURVIVED vs FAILED: WHEN DO THEY DIVERGE? ---")
-    for model in MODELS:
+    for model in active_models:
         m = comparison[(comparison["model"] == model) & (comparison["signal"] == "cosine_sim")]
         if len(m) == 0:
             m = comparison[(comparison["model"] == model)]
+        if len(m) == 0:
+            continue
         sig_frames = m[m["significant"]].sort_values("frame")
         if len(sig_frames) > 0:
             first = sig_frames.iloc[0]
@@ -476,11 +545,11 @@ def generate_report(
 
     # ── Predictability ──
     lines.append("--- PREDICTABILITY METRICS ---")
-    lines.append(f"  {'Model':8s} {'Signal':25s} {'AUROC':>7s} {'Lead(fr)':>8s} {'Neg%':>6s} {'SNR':>6s}")
-    lines.append("  " + "-" * 65)
+    lines.append(f"  {'Model':12s} {'Signal':25s} {'AUROC':>7s} {'Lead(fr)':>8s} {'Neg%':>6s} {'SNR':>6s}")
+    lines.append("  " + "-" * 69)
     for _, row in predictability.iterrows():
         auroc = f"{row['auroc_at_frame10']:.3f}" if pd.notna(row["auroc_at_frame10"]) else "N/A"
-        lines.append(f"  {row['model'].upper():8s} {row['signal']:25s} {auroc:>7s} "
+        lines.append(f"  {row['model'].upper():12s} {row['signal']:25s} {auroc:>7s} "
                      f"{row['lead_time_frames']:>8.1f} {row['pct_negative_trend']:>5.0f}% "
                      f"{row['snr']:>6.3f}")
     lines.append("")
@@ -488,7 +557,7 @@ def generate_report(
     # ── Failure-aligned trajectory ──
     lines.append("--- SIGNAL TRAJECTORY AROUND FAILURE POINT ---")
     lines.append("  (relative_frame: -5=five frames before failure, 0=at failure)")
-    for model in MODELS:
+    for model in active_models:
         m = aligned[aligned["model"] == model]
         if "cosine_sim_mean" not in m.columns:
             continue
@@ -512,18 +581,22 @@ def generate_report(
 # Main
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def main():
+def main(
+    boundaries_csv: str = BOUNDARIES_CSV,
+    signals_csv: str = SIGNALS_CSV,
+    models: Optional[Sequence[str]] = None,
+):
     print("=" * 70)
     print("  AFS-VFM Phase 2C - Anticipatory Signal Detection")
     print("=" * 70)
 
     # Load data
-    print(f"\n  Loading Phase 2A boundaries: {BOUNDARIES_CSV}")
-    boundaries = pd.read_csv(BOUNDARIES_CSV)
+    print(f"\n  Loading Phase 2A boundaries: {boundaries_csv}")
+    boundaries = pd.read_csv(boundaries_csv)
     print(f"  Loaded {len(boundaries):,} boundary records")
 
-    print(f"  Loading Phase 2B signals: {SIGNALS_CSV}")
-    signals = pd.read_csv(SIGNALS_CSV)
+    print(f"  Loading Phase 2B signals: {signals_csv}")
+    signals = pd.read_csv(signals_csv)
     print(f"  Loaded {len(signals):,} signal records")
 
     # Create output directory
@@ -534,33 +607,36 @@ def main():
     boundaries = boundaries[boundaries["image"].isin(signal_images)]
     print(f"  Matched {boundaries['image'].nunique()} images across both datasets")
 
+    active_models = discover_models(boundaries, signals, models)
+    print(f"  Active model registry ({len(active_models)} models): {active_models}")
+
     # Step 1: Merge
-    merged = merge_boundaries_and_signals(boundaries, signals)
+    merged = merge_boundaries_and_signals(boundaries, signals, models=active_models)
     merged.to_csv(os.path.join(OUTPUT_DIR, "merged_signals_boundaries.csv"), index=False)
     print(f"         > Saved merged_signals_boundaries.csv")
 
     # Step 2: Failure-aligned profiles
-    aligned = analyze_failure_aligned_signals(merged)
+    aligned = analyze_failure_aligned_signals(merged, models=active_models)
     aligned.to_csv(os.path.join(OUTPUT_DIR, "failure_aligned_signals.csv"), index=False)
     print(f"         > Saved failure_aligned_signals.csv")
 
     # Step 3: Pre-failure window stats
-    prefailure = compute_prefailure_statistics(merged)
+    prefailure = compute_prefailure_statistics(merged, models=active_models)
     prefailure.to_csv(os.path.join(OUTPUT_DIR, "prefailure_window_stats.csv"), index=False)
     print(f"         > Saved prefailure_window_stats.csv")
 
     # Step 4: Survived vs failed comparison
-    comparison = compare_survived_vs_failed(merged)
+    comparison = compare_survived_vs_failed(merged, models=active_models)
     comparison.to_csv(os.path.join(OUTPUT_DIR, "survived_vs_failed.csv"), index=False)
     print(f"         > Saved survived_vs_failed.csv")
 
     # Step 5: Predictability metrics
-    predictability = compute_predictability(merged, prefailure)
+    predictability = compute_predictability(merged, prefailure, models=active_models)
     predictability.to_csv(os.path.join(OUTPUT_DIR, "predictability_metrics.csv"), index=False)
     print(f"         > Saved predictability_metrics.csv")
 
     # Step 6: Report
-    report = generate_report(aligned, prefailure, comparison, predictability)
+    report = generate_report(aligned, prefailure, comparison, predictability, models=active_models)
     report_path = os.path.join(OUTPUT_DIR, "phase2c_report.txt")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
@@ -573,4 +649,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="AFS-VFM Phase 2C - Anticipatory Signal Detection")
+    parser.add_argument("--boundaries", default=BOUNDARIES_CSV, help="Path to failure_boundaries.csv")
+    parser.add_argument("--signals", default=SIGNALS_CSV, help="Path to frame_signals.csv")
+    parser.add_argument("--models", nargs="*", default=None, help="Models to evaluate (default: auto-discover)")
+    args = parser.parse_args()
+    main(boundaries_csv=args.boundaries, signals_csv=args.signals, models=args.models)
