@@ -20,7 +20,9 @@ OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Signals to evaluate per model
 MODEL_SIGNALS = {
     "dinov2": ["top1_confidence", "logit_margin", "cosine_sim"],
+    "dinov2_large": ["top1_confidence", "logit_margin", "cosine_sim"],
     "clip":   ["top1_confidence", "logit_margin", "cosine_sim"],
+    "siglip": ["top1_confidence", "logit_margin", "cosine_sim"],
     "detr":   ["top_detection_confidence", "cosine_sim"],
 }
 
