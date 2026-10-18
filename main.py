@@ -108,6 +108,17 @@ def infer_clip(model, processor, frame, device, labels: list) -> str:
     return labels[best_idx]
 
 
+def infer_siglip(model, processor, frame, device, labels: list) -> str:
+    """Run SigLIP zero-shot classification and return the best label."""
+    inputs = processor(text=labels, images=frame, return_tensors="pt", padding="max_length").to(device)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    # SigLIP uses sigmoid BCE loss rather than softmax
+    probs = torch.sigmoid(outputs.logits_per_image)
+    best_idx = probs.argmax(-1).item()
+    return labels[best_idx]
+
+
 def infer_detr(model, processor, frame, device) -> str:
     """Run DETR object detection and return the top-confidence class label."""
     inputs = processor(images=frame, return_tensors="pt").to(device)
@@ -122,12 +133,14 @@ def infer_detr(model, processor, frame, device) -> str:
 
 # ── Main benchmark loop ────────────────────────────────────────────────────
 
-def run_benchmark(pilot=False, batch=None):
+def run_benchmark(pilot: bool = False, batch: int = None, models: list = None):
+    models_to_run = [m.lower() for m in models] if models else ["dinov2", "clip", "detr"]
+
     if pilot:
         mode_label = "PILOT (quick validation)"
         csv_name = "pilot_benchmark.csv"
     elif batch:
-        mode_label = f"BATCH {batch} of 3 (images {(batch-1)*500+1}–{batch*500})"
+        mode_label = f"BATCH {batch} of 3 (images {(batch-1)*500+1}-{batch*500})"
         csv_name = f"batch_{batch}.csv"
     else:
         mode_label = "FULL (1500 images)"
@@ -135,7 +148,8 @@ def run_benchmark(pilot=False, batch=None):
     csv_path = os.path.join(RESULTS_DIR, csv_name)
 
     print("=" * 70)
-    print(f"  AFS-VFM Benchmark — {mode_label}")
+    print(f"  AFS-VFM Benchmark - {mode_label}")
+    print(f"  Active Models: {', '.join(m.upper() for m in models_to_run)}")
     print("=" * 70)
 
     # Collect images
@@ -154,12 +168,9 @@ def run_benchmark(pilot=False, batch=None):
 
     # ── Resume support: check for existing partial results ──────────────
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    fieldnames = [
-        "image", "dataset", "degradation", "frame", "severity_pct",
-        "dinov2_prediction", "dinov2_failure",
-        "clip_prediction", "clip_failure",
-        "detr_prediction", "detr_failure",
-    ]
+    fieldnames = ["image", "dataset", "degradation", "frame", "severity_pct"]
+    for m in models_to_run:
+        fieldnames.extend([f"{m}_prediction", f"{m}_failure"])
 
     completed_images = set()
     all_results = []
@@ -170,7 +181,7 @@ def run_benchmark(pilot=False, batch=None):
             reader = csv.DictReader(f)
             for row in reader:
                 all_results.append(row)
-        # An image is "complete" if it has all 5 degradations × 20 frames = 100 rows
+        # An image is "complete" if it has all 5 degradations x 20 frames = 100 rows
         from collections import Counter
         img_counts = Counter(r["image"] for r in all_results)
         expected_rows_per_image = len(DEGRADATION_TYPES) * NUM_FRAMES
@@ -182,7 +193,7 @@ def run_benchmark(pilot=False, batch=None):
 
     remaining = [p for p in image_files if os.path.basename(p) not in completed_images]
 
-    total_inferences = len(remaining) * len(DEGRADATION_TYPES) * NUM_FRAMES * 3
+    total_inferences = len(remaining) * len(DEGRADATION_TYPES) * NUM_FRAMES * len(models_to_run)
     print(f"\n  Total images:       {len(image_files)}")
     print(f"  Already completed:  {len(completed_images)}")
     print(f"  Remaining:          {len(remaining)}")
@@ -194,7 +205,7 @@ def run_benchmark(pilot=False, batch=None):
         print("\n  All images already processed! Nothing to do.")
         return
 
-    # ── Load all 3 models ───────────────────────────────────────────────
+    # ── Load models ─────────────────────────────────────────────────────
     print("\n" + "-" * 70)
     print("  Loading Vision Foundation Models ...")
     print("-" * 70)
@@ -202,16 +213,22 @@ def run_benchmark(pilot=False, batch=None):
     loader = VisionModelLoader()
     device = loader.device
 
-    dino_model, dino_proc = loader.load_dinov2()
-    clip_model, clip_proc = loader.load_clip()
-    detr_model, detr_proc = loader.load_detr()
+    loaded_models = {}
+    for m in models_to_run:
+        if hasattr(loader, f"load_{m}"):
+            loaded_models[m] = getattr(loader, f"load_{m}")()
+        elif hasattr(loader, "load_model"):
+            loaded_models[m] = loader.load_model(m)
+        else:
+            raise ValueError(f"Unknown model: {m}")
+        print(f"  [OK] Loaded {m.upper()}")
 
-    print("  All 3 models loaded successfully.\n")
+    print("  All requested models loaded successfully.\n")
 
     # ── Helper to save CSV incrementally ────────────────────────────────
     def save_csv():
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(all_results)
 
@@ -238,7 +255,7 @@ def run_benchmark(pilot=False, batch=None):
                 continue
 
             # Track baselines for each model
-            baselines = {"dinov2": None, "clip": None, "detr": None}
+            baselines = {m: None for m in models_to_run}
 
             for frame_idx in range(NUM_FRAMES):
                 frame = frames[frame_idx]
@@ -250,58 +267,44 @@ def run_benchmark(pilot=False, batch=None):
                 else:
                     frame_pil = frame
 
-                # ── DINOv2 ──
-                try:
-                    dino_pred = infer_dinov2(dino_model, dino_proc, frame_pil, device)
-                except Exception:
-                    dino_pred = "ERROR"
-                if frame_idx == 0:
-                    baselines["dinov2"] = dino_pred
-                dino_fail = (dino_pred != baselines["dinov2"])
-
-                # ── CLIP ──
-                try:
-                    clip_pred = infer_clip(clip_model, clip_proc, frame_pil, device, CLIP_CANDIDATE_LABELS)
-                except Exception:
-                    clip_pred = "ERROR"
-                if frame_idx == 0:
-                    baselines["clip"] = clip_pred
-                clip_fail = (clip_pred != baselines["clip"])
-
-                # ── DETR ──
-                try:
-                    detr_pred = infer_detr(detr_model, detr_proc, frame_pil, device)
-                except Exception:
-                    detr_pred = "ERROR"
-                if frame_idx == 0:
-                    baselines["detr"] = detr_pred
-                detr_fail = (detr_pred != baselines["detr"])
-
-                # Log to console
-                status = ""
-                if dino_fail:
-                    status += " [DINOv2 FAIL]"
-                if clip_fail:
-                    status += " [CLIP FAIL]"
-                if detr_fail:
-                    status += " [DETR FAIL]"
-
-                print(f"     Frame {frame_idx+1:02d} ({severity_pct:3d}%){status}")
-
-                # Append result row
-                all_results.append({
+                row_data = {
                     "image": img_file,
                     "dataset": dataset_source,
                     "degradation": deg_type,
                     "frame": frame_idx + 1,
                     "severity_pct": severity_pct,
-                    "dinov2_prediction": dino_pred,
-                    "dinov2_failure": dino_fail,
-                    "clip_prediction": clip_pred,
-                    "clip_failure": clip_fail,
-                    "detr_prediction": detr_pred,
-                    "detr_failure": detr_fail,
-                })
+                }
+                status_parts = []
+
+                for m in models_to_run:
+                    m_model, m_proc = loaded_models[m]
+                    try:
+                        if m in ("dinov2", "dinov2_large"):
+                            pred = infer_dinov2(m_model, m_proc, frame_pil, device)
+                        elif m == "clip":
+                            pred = infer_clip(m_model, m_proc, frame_pil, device, CLIP_CANDIDATE_LABELS)
+                        elif m == "siglip":
+                            pred = infer_siglip(m_model, m_proc, frame_pil, device, CLIP_CANDIDATE_LABELS)
+                        elif m == "detr":
+                            pred = infer_detr(m_model, m_proc, frame_pil, device)
+                        else:
+                            pred = "UNKNOWN_MODEL"
+                    except Exception:
+                        pred = "ERROR"
+
+                    if frame_idx == 0:
+                        baselines[m] = pred
+                    m_fail = (pred != baselines[m])
+                    if m_fail:
+                        status_parts.append(f"[{m.upper()} FAIL]")
+
+                    row_data[f"{m}_prediction"] = pred
+                    row_data[f"{m}_failure"] = m_fail
+
+                status = (" " + " ".join(status_parts)) if status_parts else ""
+                print(f"     Frame {frame_idx+1:02d} ({severity_pct:3d}%){status}")
+
+                all_results.append(row_data)
 
         # ── SAVE AFTER EVERY IMAGE (crash-safe!) ───────────────────────
         save_csv()
@@ -309,7 +312,7 @@ def run_benchmark(pilot=False, batch=None):
         imgs_done = img_idx - len(completed_images)
         rate = elapsed_so_far / imgs_done if imgs_done else 0
         remaining_est = rate * (len(remaining) - imgs_done)
-        print(f"\n  💾 Saved! ({img_idx}/{total_images} images done, "
+        print(f"\n  [SAVED] ({img_idx}/{total_images} images done, "
               f"~{remaining_est/60:.0f} min remaining)")
 
     # ── Final summary ───────────────────────────────────────────────────
@@ -328,5 +331,7 @@ if __name__ == "__main__":
     parser.add_argument("--pilot", action="store_true", help="Run a small pilot test (~20 images)")
     parser.add_argument("--batch", type=int, choices=[1, 2, 3],
                         help="Run only batch N (1=images 1-500, 2=501-1000, 3=1001-1500)")
+    parser.add_argument("--models", nargs="+", default=["dinov2", "clip", "detr"],
+                        help="Models to evaluate: dinov2 clip detr siglip dinov2_large")
     args = parser.parse_args()
-    run_benchmark(pilot=args.pilot, batch=args.batch)
+    run_benchmark(pilot=args.pilot, batch=args.batch, models=args.models)
