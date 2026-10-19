@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.join(ROOT_DIR, "src"))
 
 from degradation import generate_degradation_sequence
 from models.model_loader import VisionModelLoader
+from models.clip_imagenet1k import get_or_build_evaluator
 
 # ── Configuration ───────────────────────────────────────────────────────────
 COCO_DIR = os.path.join(ROOT_DIR, "data", "coco_val")
@@ -98,8 +99,19 @@ def infer_dinov2(model, processor, frame, device) -> str:
     return model.config.id2label[idx]
 
 
-def infer_clip(model, processor, frame, device, labels: list) -> str:
+def infer_clip(model, processor, frame, device, labels: list = None, evaluator = None) -> str:
     """Run CLIP zero-shot classification and return the best label."""
+    if evaluator is not None:
+        inputs = processor(images=frame, return_tensors="pt").to(device)
+        with torch.no_grad():
+            if hasattr(model, "get_image_features"):
+                feat = model.get_image_features(**inputs)
+            else:
+                outputs = model(**inputs)
+                feat = outputs.image_embeds if hasattr(outputs, "image_embeds") else outputs[0]
+        res = evaluator.evaluate(feat)
+        return res["prediction"]
+
     inputs = processor(text=labels, images=frame, return_tensors="pt", padding=True).to(device)
     with torch.no_grad():
         outputs = model(**inputs)
@@ -108,8 +120,19 @@ def infer_clip(model, processor, frame, device, labels: list) -> str:
     return labels[best_idx]
 
 
-def infer_siglip(model, processor, frame, device, labels: list) -> str:
+def infer_siglip(model, processor, frame, device, labels: list = None, evaluator = None) -> str:
     """Run SigLIP zero-shot classification and return the best label."""
+    if evaluator is not None:
+        inputs = processor(images=frame, return_tensors="pt").to(device)
+        with torch.no_grad():
+            if hasattr(model, "get_image_features"):
+                feat = model.get_image_features(**inputs)
+            else:
+                outputs = model(**inputs)
+                feat = outputs.image_embeds if hasattr(outputs, "image_embeds") else outputs[0]
+        res = evaluator.evaluate(feat)
+        return res["prediction"]
+
     inputs = processor(text=labels, images=frame, return_tensors="pt", padding="max_length").to(device)
     with torch.no_grad():
         outputs = model(**inputs)
@@ -133,7 +156,7 @@ def infer_detr(model, processor, frame, device) -> str:
 
 # ── Main benchmark loop ────────────────────────────────────────────────────
 
-def run_benchmark(pilot: bool = False, batch: int = None, models: list = None):
+def run_benchmark(pilot: bool = False, batch: int = None, models: list = None, clip_classes: str = "1000"):
     models_to_run = [m.lower() for m in models] if models else ["dinov2", "clip", "detr"]
 
     if pilot:
@@ -225,6 +248,28 @@ def run_benchmark(pilot: bool = False, batch: int = None, models: list = None):
 
     print("  All requested models loaded successfully.\n")
 
+    # ── Initialize Zero-Shot 1000-Class Evaluators (Limitation 10) ─────
+    evaluators = {}
+    if str(clip_classes).lower() in ("1000", "imagenet1k"):
+        if "clip" in models_to_run:
+            print("  [TextCache] Initializing ImageNet-1K cached evaluator for CLIP...")
+            evaluators["clip"] = get_or_build_evaluator(
+                model=loaded_models["clip"][0],
+                processor=loaded_models["clip"][1],
+                model_type="clip",
+                device=device,
+            )
+        if "siglip" in models_to_run:
+            print("  [TextCache] Initializing ImageNet-1K cached evaluator for SigLIP...")
+            evaluators["siglip"] = get_or_build_evaluator(
+                model=loaded_models["siglip"][0],
+                processor=loaded_models["siglip"][1],
+                model_type="siglip",
+                device=device,
+            )
+    else:
+        print(f"  [TextCache] Using legacy {len(CLIP_CANDIDATE_LABELS)}-label candidate subset.")
+
     # ── Helper to save CSV incrementally ────────────────────────────────
     def save_csv():
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -282,9 +327,17 @@ def run_benchmark(pilot: bool = False, batch: int = None, models: list = None):
                         if m in ("dinov2", "dinov2_large"):
                             pred = infer_dinov2(m_model, m_proc, frame_pil, device)
                         elif m == "clip":
-                            pred = infer_clip(m_model, m_proc, frame_pil, device, CLIP_CANDIDATE_LABELS)
+                            pred = infer_clip(
+                                m_model, m_proc, frame_pil, device,
+                                labels=CLIP_CANDIDATE_LABELS,
+                                evaluator=evaluators.get("clip"),
+                            )
                         elif m == "siglip":
-                            pred = infer_siglip(m_model, m_proc, frame_pil, device, CLIP_CANDIDATE_LABELS)
+                            pred = infer_siglip(
+                                m_model, m_proc, frame_pil, device,
+                                labels=CLIP_CANDIDATE_LABELS,
+                                evaluator=evaluators.get("siglip"),
+                            )
                         elif m == "detr":
                             pred = infer_detr(m_model, m_proc, frame_pil, device)
                         else:
@@ -333,5 +386,7 @@ if __name__ == "__main__":
                         help="Run only batch N (1=images 1-500, 2=501-1000, 3=1001-1500)")
     parser.add_argument("--models", nargs="+", default=["dinov2", "clip", "detr"],
                         help="Models to evaluate: dinov2 clip detr siglip dinov2_large")
+    parser.add_argument("--clip_classes", choices=["1000", "20", "imagenet1k", "subset"], default="1000",
+                        help="Zero-shot candidate hierarchy: '1000' (full ImageNet-1K cached) or '20' (legacy subset)")
     args = parser.parse_args()
-    run_benchmark(pilot=args.pilot, batch=args.batch, models=args.models)
+    run_benchmark(pilot=args.pilot, batch=args.batch, models=args.models, clip_classes=args.clip_classes)

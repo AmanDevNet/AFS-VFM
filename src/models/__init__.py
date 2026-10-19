@@ -13,8 +13,17 @@ Public API
 
 from .model_loader import VisionModelLoader
 from .signal_extractor import SignalExtractor
+from .clip_imagenet1k import (
+    ImageNet1KZeroShotEvaluator,
+    get_or_build_evaluator,
+    build_imagenet1k_text_features,
+)
 
 __all__ = [
     "VisionModelLoader",
     "SignalExtractor",
+    "ImageNet1KZeroShotEvaluator",
+    "get_or_build_evaluator",
+    "build_imagenet1k_text_features",
 ]
+

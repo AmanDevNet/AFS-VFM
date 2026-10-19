@@ -10,6 +10,7 @@ Changes from v1:
   - Added error printing so failures are visible, not silently caught
 """
 
+from typing import Optional, Union, Any, List
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -76,12 +77,58 @@ class SignalExtractor:
         }
 
     # ================================================================
+    # ================================================================
+    # Helper: Visual Feature Extraction for Contrastive Models
+    # ================================================================
+
+    def _extract_vision_embedding(self, model, processor, frame_pil: Image.Image) -> torch.Tensor:
+        """Helper to extract visual embedding tensor from CLIP or SigLIP."""
+        inputs = processor(images=frame_pil, return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            if hasattr(model, "get_image_features"):
+                img_feat = model.get_image_features(**inputs)
+            elif hasattr(model, "vision_model"):
+                out = model.vision_model(**inputs)
+                img_feat = out.pooler_output if hasattr(out, "pooler_output") else out[0][:, 0]
+                if hasattr(model, "visual_projection"):
+                    img_feat = model.visual_projection(img_feat)
+            else:
+                outputs = model(**inputs)
+                if hasattr(outputs, "image_embeds") and outputs.image_embeds is not None:
+                    img_feat = outputs.image_embeds
+                elif hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
+                    img_feat = outputs.last_hidden_state[:, 0]
+                else:
+                    img_feat = outputs[0]
+        return img_feat
+
+    # ================================================================
     # CLIP
     # ================================================================
 
     def extract_clip(self, model, processor, frame_pil: Image.Image,
-                     candidate_labels: list) -> dict:
-        """Extract internal signals from CLIP for a single frame."""
+                     candidate_labels: Optional[Union[list, str]] = None,
+                     evaluator: Any = None) -> dict:
+        """Extract internal signals from CLIP for a single frame.
+
+        Supports two evaluation modes:
+        1. 1,000-class ImageNet-1K hierarchy via precomputed text cache (Limitation 10).
+           Activated when evaluator is provided, or candidate_labels is None, 'imagenet1k', or empty.
+        2. Arbitrary custom candidate labels list (legacy / specialized subsets).
+        """
+        # Mode 1: 1,000-class ImageNet evaluation
+        if evaluator is not None or candidate_labels in (None, "imagenet1k", "1000", []):
+            if evaluator is None:
+                from .clip_imagenet1k import get_or_build_evaluator
+                evaluator = get_or_build_evaluator(
+                    model=model, processor=processor, model_type="clip", device=self.device
+                )
+            img_feat = self._extract_vision_embedding(model, processor, frame_pil)
+            result = evaluator.evaluate(img_feat)
+            result["image_embedding"] = img_feat[0].detach().cpu().numpy()
+            return result
+
+        # Mode 2: Custom candidate labels
         inputs = processor(
             text=candidate_labels, images=frame_pil,
             return_tensors="pt", padding=True
@@ -89,21 +136,24 @@ class SignalExtractor:
 
         with torch.no_grad():
             outputs = model(**inputs)
-
-            # Image embedding from the outputs
             image_embedding = outputs.image_embeds[0].cpu().numpy()
-
-            # Logits per image
             logits_per_image = outputs.logits_per_image[0]  # (n_labels,)
 
         probs = F.softmax(logits_per_image, dim=-1).cpu().numpy()
         raw_logits = logits_per_image.cpu().numpy()
 
-        # Sort for top predictions
         sorted_idx = np.argsort(probs)[::-1]
         top1_conf = float(probs[sorted_idx[0]])
-        logit_margin = float(probs[sorted_idx[0]] - probs[sorted_idx[1]])
+        top2_conf = float(probs[sorted_idx[1]]) if len(sorted_idx) > 1 else 0.0
+        logit_margin = float(top1_conf - top2_conf)
         prediction = candidate_labels[sorted_idx[0]]
+
+        p_safe = np.clip(probs, 1e-12, None)
+        entropy = float(-np.sum(p_safe * np.log(p_safe)))
+
+        top_k = min(5, len(candidate_labels))
+        top5_labels = [candidate_labels[idx] for idx in sorted_idx[:top_k]]
+        top5_logits = [float(probs[idx]) for idx in sorted_idx[:top_k]]
 
         return {
             "image_embedding": image_embedding,
@@ -111,6 +161,10 @@ class SignalExtractor:
             "full_probs": probs,
             "top1_confidence": top1_conf,
             "logit_margin": logit_margin,
+            "prediction_entropy": entropy,
+            "top5_labels": top5_labels,
+            "top5_logits": np.array(top5_logits),
+            "top5_confs": top5_logits,
             "prediction": prediction,
         }
 
@@ -119,14 +173,28 @@ class SignalExtractor:
     # ================================================================
 
     def extract_siglip(self, model, processor, frame_pil: Image.Image,
-                       candidate_labels: list) -> dict:
+                       candidate_labels: Optional[Union[list, str]] = None,
+                       evaluator: Any = None) -> dict:
         """Extract internal signals from Google SigLIP for a single frame.
 
-        Unlike standard CLIP which applies softmax over candidate text tokens,
-        SigLIP formulates language-image alignment as pairwise binary cross-entropy,
-        yielding independent sigmoid probabilities per label:
-            probs = sigmoid(logits_per_image)
+        Supports two evaluation modes:
+        1. 1,000-class ImageNet-1K hierarchy via precomputed text cache (Limitation 10).
+           Activated when evaluator is provided, or candidate_labels is None, 'imagenet1k', or empty.
+        2. Arbitrary custom candidate labels list (legacy / specialized subsets).
         """
+        # Mode 1: 1,000-class ImageNet evaluation
+        if evaluator is not None or candidate_labels in (None, "imagenet1k", "1000", []):
+            if evaluator is None:
+                from .clip_imagenet1k import get_or_build_evaluator
+                evaluator = get_or_build_evaluator(
+                    model=model, processor=processor, model_type="siglip", device=self.device
+                )
+            img_feat = self._extract_vision_embedding(model, processor, frame_pil)
+            result = evaluator.evaluate(img_feat)
+            result["image_embedding"] = img_feat[0].detach().cpu().numpy()
+            return result
+
+        # Mode 2: Custom candidate labels
         inputs = processor(
             text=candidate_labels, images=frame_pil,
             return_tensors="pt", padding="max_length"
@@ -134,8 +202,6 @@ class SignalExtractor:
 
         with torch.no_grad():
             outputs = model(**inputs)
-
-            # Image embedding
             if hasattr(outputs, "image_embeds") and outputs.image_embeds is not None:
                 image_embedding = outputs.image_embeds[0].cpu().numpy()
             elif hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
@@ -143,17 +209,24 @@ class SignalExtractor:
             else:
                 image_embedding = outputs[0][0].cpu().numpy()
 
-            # Logits per image
             logits_per_image = outputs.logits_per_image[0]  # (n_labels,)
 
-        # Pairwise sigmoid probabilities (defining characteristic of SigLIP)
         probs = torch.sigmoid(logits_per_image).cpu().numpy()
         raw_logits = logits_per_image.cpu().numpy()
 
         sorted_idx = np.argsort(probs)[::-1]
         top1_conf = float(probs[sorted_idx[0]])
-        logit_margin = float(probs[sorted_idx[0]] - probs[sorted_idx[1]])
+        top2_conf = float(probs[sorted_idx[1]]) if len(sorted_idx) > 1 else 0.0
+        logit_margin = float(top1_conf - top2_conf)
         prediction = candidate_labels[sorted_idx[0]]
+
+        p_norm = probs / (np.sum(probs) + 1e-12)
+        p_safe = np.clip(p_norm, 1e-12, None)
+        entropy = float(-np.sum(p_safe * np.log(p_safe)))
+
+        top_k = min(5, len(candidate_labels))
+        top5_labels = [candidate_labels[idx] for idx in sorted_idx[:top_k]]
+        top5_logits = [float(probs[idx]) for idx in sorted_idx[:top_k]]
 
         return {
             "image_embedding": image_embedding,
@@ -161,6 +234,10 @@ class SignalExtractor:
             "full_probs": probs,
             "top1_confidence": top1_conf,
             "logit_margin": logit_margin,
+            "prediction_entropy": entropy,
+            "top5_labels": top5_labels,
+            "top5_logits": np.array(top5_logits),
+            "top5_confs": top5_logits,
             "prediction": prediction,
         }
 
@@ -252,11 +329,13 @@ class SignalExtractor:
         if "dinov2" in key:
             return self.extract_dinov2(model, processor, frame_pil)
         elif "siglip" in key:
-            candidate_labels = kwargs.get("candidate_labels", [])
-            return self.extract_siglip(model, processor, frame_pil, candidate_labels)
+            candidate_labels = kwargs.get("candidate_labels", None)
+            evaluator = kwargs.get("evaluator", None)
+            return self.extract_siglip(model, processor, frame_pil, candidate_labels=candidate_labels, evaluator=evaluator)
         elif "clip" in key:
-            candidate_labels = kwargs.get("candidate_labels", [])
-            return self.extract_clip(model, processor, frame_pil, candidate_labels)
+            candidate_labels = kwargs.get("candidate_labels", None)
+            evaluator = kwargs.get("evaluator", None)
+            return self.extract_clip(model, processor, frame_pil, candidate_labels=candidate_labels, evaluator=evaluator)
         elif "detr" in key:
             return self.extract_detr(model, processor, frame_pil)
         else:

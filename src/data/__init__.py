@@ -20,9 +20,16 @@ def __getattr__(name: str) -> Any:
     elif name == "curate_coco":
         from .curate_coco import curate_coco
         return curate_coco
+    elif name in ("IMAGENET_1K_CLASSES", "IMAGENET_PROMPT_TEMPLATES", "get_imagenet_classes", "get_clean_label"):
+        from . import imagenet_classes
+        return getattr(imagenet_classes, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "curate_imagenet",
     "curate_coco",
+    "IMAGENET_1K_CLASSES",
+    "IMAGENET_PROMPT_TEMPLATES",
+    "get_imagenet_classes",
+    "get_clean_label",
 ]
