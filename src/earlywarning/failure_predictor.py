@@ -35,7 +35,7 @@ class FailurePredictor:
                 f"Thresholds file not found: {thresholds_path}\n"
                 "Run: python -m src.earlywarning.learn_thresholds"
             )
-        with open(thresholds_path) as f:
+        with open(thresholds_path, "r", encoding="utf-8") as f:
             self.thresholds: Dict[str, Any] = json.load(f)
 
     def assess(self, model_name: str, signals_dict: Dict[str, float]) -> Dict[str, Any]:
@@ -162,7 +162,8 @@ class FailurePredictor:
             assessment["frame"] = frame_idx + 1
             results.append(assessment)
 
-            if assessment["status"] == "WARNING" and first_warning is None:
+            # Any alert (WARNING or CRITICAL) marks the onset of failure anticipation
+            if assessment["status"] in ("WARNING", "CRITICAL") and first_warning is None:
                 first_warning = frame_idx + 1
             if assessment["status"] == "CRITICAL" and first_critical is None:
                 first_critical = frame_idx + 1

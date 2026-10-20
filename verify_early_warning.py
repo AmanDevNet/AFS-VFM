@@ -126,6 +126,28 @@ def test_5_synthetic_fallback_and_bounds():
     print("  [PASS] Synthetic trajectories are strictly bounded and NaN-free.")
 
 
+def test_6_abrupt_critical_transition():
+    print("[TEST 6] Verifying sudden CRITICAL transition correctly sets first_warning_frame...")
+    predictor = FailurePredictor()
+
+    # Trajectory that starts healthy (frames 1-3), then drops directly to CRITICAL at frame 4
+    abrupt_traj = [
+        {"top1_confidence": 0.95, "logit_margin": 2.50, "cosine_sim": 0.98}, # Frame 1: OK
+        {"top1_confidence": 0.93, "logit_margin": 2.40, "cosine_sim": 0.97}, # Frame 2: OK
+        {"top1_confidence": 0.91, "logit_margin": 2.30, "cosine_sim": 0.96}, # Frame 3: OK
+        {"top1_confidence": 0.10, "logit_margin": 0.02, "cosine_sim": 0.35}, # Frame 4: CRITICAL (abrupt shock)
+        {"top1_confidence": 0.08, "logit_margin": 0.01, "cosine_sim": 0.30}, # Frame 5: CRITICAL
+    ]
+
+    res = predictor.assess_trajectory("dinov2", abrupt_traj)
+    assert res["trajectory"][2]["status"] == "OK"
+    assert res["trajectory"][3]["status"] == "CRITICAL"
+    assert res["first_critical_frame"] == 4, f"Expected first_critical_frame=4, got {res['first_critical_frame']}"
+    assert res["first_warning_frame"] == 4, f"Expected first_warning_frame=4 on abrupt drop, got {res['first_warning_frame']}"
+
+    print("  [PASS] Abrupt transition to CRITICAL reliably triggers early warning alert frame.")
+
+
 def run_all_tests():
     print("=" * 70)
     print("  AFS-VFM Early Warning Automated Verification Suite")
@@ -135,8 +157,9 @@ def run_all_tests():
     test_3_warning_and_critical_transitions()
     test_4_trajectory_lead_time()
     test_5_synthetic_fallback_and_bounds()
+    test_6_abrupt_critical_transition()
     print("=" * 70)
-    print("  ALL 5 EARLY WARNING VERIFICATION TESTS PASSED SUCCESSFULLY!")
+    print("  ALL 6 EARLY WARNING VERIFICATION TESTS PASSED SUCCESSFULLY!")
     print("=" * 70)
 
 

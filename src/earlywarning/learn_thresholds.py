@@ -102,7 +102,7 @@ def learn_thresholds():
 
     # Save
     out_path = os.path.join(OUT_DIR, "thresholds.json")
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(thresholds, f, indent=2)
     print(f"  Thresholds saved to: {out_path}")
     return thresholds
