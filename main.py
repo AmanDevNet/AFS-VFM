@@ -31,7 +31,11 @@ import argparse
 # Force unbuffered output so progress shows up in terminal immediately
 os.environ["PYTHONUNBUFFERED"] = "1"
 
-import torch
+try:
+    import torch
+except ImportError:
+    torch = None
+
 import numpy as np
 from PIL import Image
 
@@ -39,9 +43,14 @@ from PIL import Image
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(ROOT_DIR, "src"))
 
-from degradation import generate_degradation_sequence
-from models.model_loader import VisionModelLoader
-from models.clip_imagenet1k import get_or_build_evaluator
+try:
+    from degradation import generate_degradation_sequence
+    from models.model_loader import VisionModelLoader
+    from models.clip_imagenet1k import get_or_build_evaluator
+except ImportError:
+    generate_degradation_sequence = None
+    VisionModelLoader = None
+    get_or_build_evaluator = None
 
 # ── Configuration ───────────────────────────────────────────────────────────
 COCO_DIR = os.path.join(ROOT_DIR, "data", "coco_val")
@@ -156,24 +165,16 @@ def infer_detr(model, processor, frame, device) -> str:
 
 # ── Main benchmark loop ────────────────────────────────────────────────────
 
-def run_benchmark(pilot: bool = False, batch: int = None, models: list = None, clip_classes: str = "1000"):
+def run_benchmark(
+    pilot: bool = False,
+    batch: int = None,
+    shard_id: int = None,
+    num_shards: int = None,
+    batch_size: int = 500,
+    models: list = None,
+    clip_classes: str = "1000",
+):
     models_to_run = [m.lower() for m in models] if models else ["dinov2", "clip", "detr"]
-
-    if pilot:
-        mode_label = "PILOT (quick validation)"
-        csv_name = "pilot_benchmark.csv"
-    elif batch:
-        mode_label = f"BATCH {batch} of 3 (images {(batch-1)*500+1}-{batch*500})"
-        csv_name = f"batch_{batch}.csv"
-    else:
-        mode_label = "FULL (1500 images)"
-        csv_name = "full_benchmark.csv"
-    csv_path = os.path.join(RESULTS_DIR, csv_name)
-
-    print("=" * 70)
-    print(f"  AFS-VFM Benchmark - {mode_label}")
-    print(f"  Active Models: {', '.join(m.upper() for m in models_to_run)}")
-    print("=" * 70)
 
     # Collect images
     image_files = collect_images(pilot=pilot)
@@ -181,13 +182,34 @@ def run_benchmark(pilot: bool = False, batch: int = None, models: list = None, c
         print("\n  ERROR: No images found. Run 'python download_dataset.py' first.")
         sys.exit(1)
 
-    # Apply batch slicing (split into 3 groups of 500)
-    if batch and not pilot:
-        batch_size = 500
+    total_pool_size = len(image_files)
+
+    if pilot:
+        mode_label = "PILOT (quick validation)"
+        csv_path = os.path.join(RESULTS_DIR, "pilot_benchmark.csv")
+    elif num_shards is not None and num_shards > 1:
+        s_id = shard_id if shard_id is not None else 0
+        shards_dir = os.path.join(RESULTS_DIR, "shards")
+        os.makedirs(shards_dir, exist_ok=True)
+        csv_path = os.path.join(shards_dir, f"shard_{s_id:03d}_of_{num_shards:03d}.csv")
+        # Deterministic interleaved sharding across image pool
+        image_files = [img for i, img in enumerate(image_files) if i % num_shards == s_id]
+        mode_label = f"SHARD {s_id+1}/{num_shards} ({len(image_files)} of {total_pool_size} images)"
+    elif batch:
         start_idx = (batch - 1) * batch_size
         end_idx = batch * batch_size
         image_files = image_files[start_idx:end_idx]
-        print(f"\n  BATCH MODE: Processing images {start_idx+1} to {min(end_idx, len(image_files)+start_idx)}")
+        mode_label = f"BATCH {batch} (images {start_idx+1}-{min(end_idx, total_pool_size)})"
+        csv_path = os.path.join(RESULTS_DIR, f"batch_{batch}.csv")
+    else:
+        mode_label = f"FULL ({total_pool_size} images)"
+        csv_path = os.path.join(RESULTS_DIR, "full_benchmark.csv")
+
+    print("=" * 70)
+    print(f"  AFS-VFM Benchmark - {mode_label}")
+    print(f"  Active Models: {', '.join(m.upper() for m in models_to_run)}")
+    print(f"  Output CSV:    {csv_path}")
+    print("=" * 70)
 
     # ── Resume support: check for existing partial results ──────────────
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -380,13 +402,27 @@ def run_benchmark(pilot: bool = False, batch: int = None, models: list = None, c
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="AFS-VFM Benchmark")
+    parser = argparse.ArgumentParser(description="AFS-VFM Scalable Benchmark Runner")
     parser.add_argument("--pilot", action="store_true", help="Run a small pilot test (~20 images)")
-    parser.add_argument("--batch", type=int, choices=[1, 2, 3],
-                        help="Run only batch N (1=images 1-500, 2=501-1000, 3=1001-1500)")
+    parser.add_argument("--batch", type=int, default=None,
+                        help="Run sequential batch N (e.g., 1 to 20)")
+    parser.add_argument("--batch_size", type=int, default=500,
+                        help="Images per batch (default: 500)")
+    parser.add_argument("--shard_id", type=int, default=None,
+                        help="0-indexed shard ID for distributed execution (0 to num_shards-1)")
+    parser.add_argument("--num_shards", type=int, default=None,
+                        help="Total number of distributed shards (e.g. 20)")
     parser.add_argument("--models", nargs="+", default=["dinov2", "clip", "detr"],
                         help="Models to evaluate: dinov2 clip detr siglip dinov2_large")
     parser.add_argument("--clip_classes", choices=["1000", "20", "imagenet1k", "subset"], default="1000",
                         help="Zero-shot candidate hierarchy: '1000' (full ImageNet-1K cached) or '20' (legacy subset)")
     args = parser.parse_args()
-    run_benchmark(pilot=args.pilot, batch=args.batch, models=args.models, clip_classes=args.clip_classes)
+    run_benchmark(
+        pilot=args.pilot,
+        batch=args.batch,
+        shard_id=args.shard_id,
+        num_shards=args.num_shards,
+        batch_size=args.batch_size,
+        models=args.models,
+        clip_classes=args.clip_classes,
+    )
