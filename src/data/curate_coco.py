@@ -41,7 +41,7 @@ def curate_coco(num_images=500, target_size=(224, 224), out_dir=None):
         ann_by_img[ann['image_id']].append(ann)
     
         
-    # Download frist num_images metadata
+    # Download first num_images metadata
     images_to_download = coco_data['images'][:num_images]
     
     ground_truth_map = {}
@@ -74,7 +74,7 @@ def curate_coco(num_images=500, target_size=(224, 224), out_dir=None):
         
         image_filename = f"coco_{img_id:012d}.jpg"
         image_path = os.path.join(save_dir, image_filename)
-        image.save(image_path)
+        image.save(image_path, "JPEG", quality=95)
         
         # Extract bounding boxes for this image
         annotations = ann_by_img.get(img_id, [])
@@ -98,7 +98,7 @@ def curate_coco(num_images=500, target_size=(224, 224), out_dir=None):
             
         
     labels_path = os.path.join(save_dir, "coco_labels.json")
-    with open(labels_path, "w") as f:
+    with open(labels_path, "w", encoding="utf-8") as f:
         json.dump(ground_truth_map, f, indent=4)
     
     print(f"Success! COCO dataset saved to {save_dir}")

@@ -39,7 +39,7 @@ def curate_imagenet(num_images=1000, target_size=(224, 224), out_dir=None):
         # Save the image
         image_filename = f"imagenet_{i:04d}.jpg"
         image_path = os.path.join(save_dir, image_filename)
-        image.save(image_path)
+        image.save(image_path, "JPEG", quality=95)
 
         # Log the mapping
         ground_truth_map[image_filename] = label
