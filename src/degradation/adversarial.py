@@ -30,6 +30,28 @@ from PIL import Image
 
 from .scheduler import SeverityScheduler
 
+try:
+    from ..models.clip_imagenet1k import extract_embedding_tensor
+except (ImportError, ValueError):
+    try:
+        from models.clip_imagenet1k import extract_embedding_tensor
+    except ImportError:
+        def extract_embedding_tensor(features):
+            if isinstance(features, torch.Tensor):
+                return features
+            if hasattr(features, "text_embeds") and features.text_embeds is not None:
+                return features.text_embeds
+            if hasattr(features, "image_embeds") and features.image_embeds is not None:
+                return features.image_embeds
+            if hasattr(features, "pooler_output") and features.pooler_output is not None:
+                return features.pooler_output
+            if hasattr(features, "last_hidden_state") and features.last_hidden_state is not None:
+                lhs = features.last_hidden_state
+                return lhs[:, 0] if lhs.dim() == 3 else lhs
+            if isinstance(features, (tuple, list)) and len(features) > 0:
+                return features[1] if len(features) > 1 and isinstance(features[1], torch.Tensor) else features[0]
+            return features
+
 
 class AdversarialAttacker:
     """Generates gradient-based adversarial perturbations targeting VFM feature spaces."""
@@ -55,6 +77,7 @@ class AdversarialAttacker:
             else:
                 outputs = model(pixel_values=pixel_values)
                 feat = outputs.image_embeds if hasattr(outputs, "image_embeds") else outputs[0]
+            feat = extract_embedding_tensor(feat)
         elif "detr" in class_name:
             outputs = model(pixel_values=pixel_values, output_hidden_states=True)
             if hasattr(outputs, "encoder_last_hidden_state") and outputs.encoder_last_hidden_state is not None:

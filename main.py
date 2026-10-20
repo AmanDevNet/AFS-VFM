@@ -46,11 +46,12 @@ sys.path.insert(0, os.path.join(ROOT_DIR, "src"))
 try:
     from degradation import generate_degradation_sequence
     from models.model_loader import VisionModelLoader
-    from models.clip_imagenet1k import get_or_build_evaluator
+    from models.clip_imagenet1k import get_or_build_evaluator, extract_embedding_tensor
 except ImportError:
     generate_degradation_sequence = None
     VisionModelLoader = None
     get_or_build_evaluator = None
+    extract_embedding_tensor = lambda x: x
 
 # ── Configuration ───────────────────────────────────────────────────────────
 COCO_DIR = os.path.join(ROOT_DIR, "data", "coco_val")
@@ -118,6 +119,7 @@ def infer_clip(model, processor, frame, device, labels: list = None, evaluator =
             else:
                 outputs = model(**inputs)
                 feat = outputs.image_embeds if hasattr(outputs, "image_embeds") else outputs[0]
+            feat = extract_embedding_tensor(feat)
         res = evaluator.evaluate(feat)
         return res["prediction"]
 
@@ -139,6 +141,7 @@ def infer_siglip(model, processor, frame, device, labels: list = None, evaluator
             else:
                 outputs = model(**inputs)
                 feat = outputs.image_embeds if hasattr(outputs, "image_embeds") else outputs[0]
+            feat = extract_embedding_tensor(feat)
         res = evaluator.evaluate(feat)
         return res["prediction"]
 

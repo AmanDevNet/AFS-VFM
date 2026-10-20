@@ -61,6 +61,43 @@ CANONICAL_ENSEMBLE_TEMPLATES = [
 ]
 
 
+def extract_embedding_tensor(features: Any) -> torch.Tensor:
+    """Extract a 2D embedding tensor (batch_size, embed_dim) from model outputs.
+
+    Ensures seamless compatibility across transformers v4 and v5+:
+    - In transformers v4, model.get_text_features() and get_image_features() returned a bare torch.Tensor.
+    - In transformers v5+, these methods return a ModelOutput dataclass
+      (e.g., BaseModelOutputWithPooling, CLIPTextModelOutput, CLIPVisionModelOutput)
+      where the projected pooled embedding resides in .pooler_output, .text_embeds, or .image_embeds.
+    - In standard forward passes (model(**inputs)), output contains .text_embeds or .image_embeds.
+    """
+    if isinstance(features, torch.Tensor):
+        return features
+
+    # Check for direct attribute fields on ModelOutput / BaseModelOutputWithPooling
+    if hasattr(features, "text_embeds") and features.text_embeds is not None:
+        return features.text_embeds
+    if hasattr(features, "image_embeds") and features.image_embeds is not None:
+        return features.image_embeds
+    if hasattr(features, "pooler_output") and features.pooler_output is not None:
+        return features.pooler_output
+    if hasattr(features, "last_hidden_state") and features.last_hidden_state is not None:
+        lhs = features.last_hidden_state
+        return lhs[:, 0] if lhs.dim() == 3 else lhs
+
+    # Sequence / tuple output fallback
+    if isinstance(features, (tuple, list)) and len(features) > 0:
+        if len(features) > 1 and isinstance(features[1], torch.Tensor):
+            return features[1]
+        if isinstance(features[0], torch.Tensor):
+            return features[0]
+
+    raise TypeError(
+        f"Unable to extract embedding tensor from object of type '{type(features).__name__}'. "
+        f"Available attributes: {dir(features)}"
+    )
+
+
 class ImageNet1KZeroShotEvaluator:
     """Fast zero-shot evaluator over the 1,000-class ImageNet hierarchy.
 
@@ -140,6 +177,9 @@ class ImageNet1KZeroShotEvaluator:
             prediction_entropy, top5_labels, top5_confs, full_probs, and full_logits.
         """
         # Format input tensor
+        if not isinstance(image_embedding, (torch.Tensor, np.ndarray)):
+            image_embedding = extract_embedding_tensor(image_embedding)
+
         if isinstance(image_embedding, np.ndarray):
             img_tensor = torch.from_numpy(image_embedding).to(self.device, dtype=torch.float32)
         else:
@@ -273,9 +313,16 @@ def build_imagenet1k_text_features(
             elif hasattr(model, "text_model"):
                 out = model.text_model(**inputs)
                 features = out[1] if len(out) > 1 else out[0][:, 0]
+                if hasattr(model, "text_projection"):
+                    features = model.text_projection(features)
             else:
                 out = model(**inputs)
                 features = out.text_embeds if hasattr(out, "text_embeds") else out[0]
+
+            # Safely unwrap ModelOutput/BaseModelOutputWithPooling to torch.Tensor
+            features = extract_embedding_tensor(features)
+            if features.dim() == 1:
+                features = features.unsqueeze(0)
 
             # Normalize embeddings per template
             features = F.normalize(features, p=2, dim=-1)
@@ -393,6 +440,7 @@ def get_or_build_evaluator(
     )
 
     # Save to disk
+    os.makedirs(cache_dir, exist_ok=True)
     payload = {
         "text_features": text_features,
         "logit_scale": scale_val,

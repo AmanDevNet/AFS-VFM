@@ -17,6 +17,7 @@ from .clip_imagenet1k import (
     ImageNet1KZeroShotEvaluator,
     get_or_build_evaluator,
     build_imagenet1k_text_features,
+    extract_embedding_tensor,
 )
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "ImageNet1KZeroShotEvaluator",
     "get_or_build_evaluator",
     "build_imagenet1k_text_features",
+    "extract_embedding_tensor",
 ]
 

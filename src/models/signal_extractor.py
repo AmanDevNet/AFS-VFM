@@ -83,6 +83,8 @@ class SignalExtractor:
 
     def _extract_vision_embedding(self, model, processor, frame_pil: Image.Image) -> torch.Tensor:
         """Helper to extract visual embedding tensor from CLIP or SigLIP."""
+        from .clip_imagenet1k import extract_embedding_tensor
+
         inputs = processor(images=frame_pil, return_tensors="pt").to(self.device)
         with torch.no_grad():
             if hasattr(model, "get_image_features"):
@@ -100,6 +102,9 @@ class SignalExtractor:
                     img_feat = outputs.last_hidden_state[:, 0]
                 else:
                     img_feat = outputs[0]
+            img_feat = extract_embedding_tensor(img_feat)
+            if img_feat.dim() == 1:
+                img_feat = img_feat.unsqueeze(0)
         return img_feat
 
     # ================================================================

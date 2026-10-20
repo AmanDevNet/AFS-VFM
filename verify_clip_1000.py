@@ -36,6 +36,8 @@ from models.clip_imagenet1k import (
     ImageNet1KZeroShotEvaluator,
     CANONICAL_ENSEMBLE_TEMPLATES,
     get_or_build_evaluator,
+    build_imagenet1k_text_features,
+    extract_embedding_tensor,
 )
 from models.signal_extractor import SignalExtractor
 
@@ -275,6 +277,137 @@ def test_6_signal_extractor_integration():
     print("  [PASS] SignalExtractor full 1,000-class zero-shot pipeline verified")
 
 
+def test_7_base_model_output_with_pooling_regression():
+    print("\n[Test 7] Regression Test: BaseModelOutputWithPooling Unwrapping & Normalization:")
+
+    # 1. Emulate transformers.modeling_outputs.BaseModelOutputWithPooling
+    class BaseModelOutputWithPooling:
+        def __init__(self, last_hidden_state, pooler_output):
+            self.last_hidden_state = last_hidden_state
+            self.pooler_output = pooler_output
+
+        def __repr__(self):
+            return f"BaseModelOutputWithPooling(pooler_output={self.pooler_output.shape})"
+
+    embed_dim = 512
+    batch_size = 10
+    seq_len = 16
+    mock_last_hidden = torch.randn(batch_size, seq_len, 768)
+    mock_pooled = torch.randn(batch_size, embed_dim)
+    mock_output = BaseModelOutputWithPooling(mock_last_hidden, mock_pooled)
+
+    # 2. Confirm the exact failure: F.normalize directly on BaseModelOutputWithPooling
+    import torch.nn.functional as F
+    try:
+        F.normalize(mock_output, p=2, dim=-1)
+        crashed = False
+    except AttributeError as e:
+        crashed = True
+        assert "norm" in str(e)
+        print(f"  - Confirmed baseline failure reproduced: AttributeError: {e}")
+    assert crashed, "Expected F.normalize to fail on BaseModelOutputWithPooling before fix!"
+
+    # 3. Test extract_embedding_tensor directly
+    extracted = extract_embedding_tensor(mock_output)
+    assert isinstance(extracted, torch.Tensor)
+    assert extracted.shape == (batch_size, embed_dim)
+    assert torch.equal(extracted, mock_pooled)
+    print(f"  - extract_embedding_tensor successfully unwrapped pooler_output: {extracted.shape}")
+
+    # 4. Test end-to-end build_imagenet1k_text_features with model returning BaseModelOutputWithPooling
+    class TransformersV5MockCLIP(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.logit_scale = nn.Parameter(torch.tensor(4.6052))
+
+        def get_text_features(self, **kwargs):
+            b = kwargs.get("input_ids", torch.zeros(10, 16)).shape[0]
+            last_hidden = torch.randn(b, 16, 768)
+            pooled = torch.randn(b, embed_dim)
+            return BaseModelOutputWithPooling(last_hidden, pooled)
+
+        def get_image_features(self, **kwargs):
+            b = kwargs.get("pixel_values", torch.zeros(1, 3, 224, 224)).shape[0]
+            last_hidden = torch.randn(b, 16, 768)
+            pooled = torch.randn(b, embed_dim)
+            return BaseModelOutputWithPooling(last_hidden, pooled)
+
+    class MockProcessor:
+        def __call__(self, text=None, images=None, **kwargs):
+            class Inputs(dict):
+                def to(self, dev):
+                    return self
+            inp = Inputs()
+            if text is not None:
+                inp["input_ids"] = torch.zeros(len(text), 16, dtype=torch.long)
+                inp["attention_mask"] = torch.ones(len(text), 16, dtype=torch.long)
+            if images is not None:
+                inp["pixel_values"] = torch.zeros(1, 3, 224, 224)
+            return inp
+
+    mock_model = TransformersV5MockCLIP()
+    mock_proc = MockProcessor()
+
+    # Run build_imagenet1k_text_features on a sample subset of classes (5 classes, 10 templates)
+    test_classes = ["tench", "goldfish", "great white shark", "tiger shark", "hammerhead"]
+    text_feats, scale, bias = build_imagenet1k_text_features(
+        model=mock_model,
+        processor=mock_proc,
+        model_type="clip",
+        classes=test_classes,
+        templates=CANONICAL_ENSEMBLE_TEMPLATES,
+        verbose=False,
+    )
+
+    # Invariants
+    assert text_feats.shape == (len(test_classes), embed_dim), f"Expected {(len(test_classes), embed_dim)}, got {text_feats.shape}"
+    norms = text_feats.norm(dim=-1)
+    assert torch.allclose(norms, torch.ones_like(norms), atol=1e-5), "Ensemble vectors are not unit normalized"
+    assert torch.isfinite(text_feats).all(), "Text feature tensor contains non-finite values"
+    print(f"  - build_imagenet1k_text_features generated finite unit-norm tensor: shape={tuple(text_feats.shape)}, min_norm={norms.min().item():.4f}, max_norm={norms.max().item():.4f}")
+
+    # 5. Test caching mechanism round-trip with the newly built features
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        evaluator = get_or_build_evaluator(
+            model=mock_model,
+            processor=mock_proc,
+            model_type="clip",
+            cache_dir=tmp_dir,
+            classes=test_classes,
+            force_rebuild=True,
+            verbose=False,
+        )
+        # Verify evaluator loaded and cache saved
+        cache_file = os.path.join(tmp_dir, "clip_imagenet1k_text_features.pt")
+        assert os.path.isfile(cache_file), f"Cache file not created at {cache_file}"
+
+        # Test evaluating an image embedding wrapped in BaseModelOutputWithPooling
+        img_mock = BaseModelOutputWithPooling(
+            last_hidden_state=torch.randn(1, 16, 768),
+            pooler_output=text_feats[1:2].clone(),  # Target: goldfish
+        )
+        res = evaluator.evaluate(img_mock)
+        assert res["prediction"] == "goldfish", f"Expected 'goldfish', got {res['prediction']}"
+        assert 0.0 <= res["top1_confidence"] <= 1.0
+        assert np.isfinite(res["logit_margin"])
+        print(f"  - Evaluator evaluate() unwrapped BaseModelOutputWithPooling image input: prediction='{res['prediction']}', top1={res['top1_confidence']:.4f}")
+
+        # 6. Test cached load from disk
+        cached_evaluator = get_or_build_evaluator(
+            model=mock_model,
+            processor=mock_proc,
+            model_type="clip",
+            cache_dir=tmp_dir,
+            classes=test_classes,
+            force_rebuild=False,
+            verbose=False,
+        )
+        assert torch.allclose(cached_evaluator.text_features.cpu(), evaluator.text_features.cpu(), atol=1e-6)
+        print("  - Cache disk serialization and reload verified compatible")
+
+    print("  [PASS] BaseModelOutputWithPooling unwrapping and normalization regression test passed")
+
+
 def main():
     print("=" * 70)
     print("  AFS-VFM LIMITATION 10 VERIFICATION: 1,000-CLASS ZERO-SHOT PIPELINE")
@@ -286,9 +419,10 @@ def main():
     test_4_siglip_zero_shot_evaluator()
     test_5_disk_caching_and_fidelity()
     test_6_signal_extractor_integration()
+    test_7_base_model_output_with_pooling_regression()
 
     print("\n" + "=" * 70)
-    print("  ALL 6 LIMITATION 10 VERIFICATION TESTS PASSED")
+    print("  ALL 7 LIMITATION 10 & REGRESSION VERIFICATION TESTS PASSED")
     print("=" * 70)
 
 
