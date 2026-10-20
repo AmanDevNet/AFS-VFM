@@ -684,6 +684,10 @@ def main(models: list = None, boundaries_path: str = None, output_dir: str = Non
     print(f"\n  All outputs saved to: {out_dir}")
 
 
+# Canonical alias for external callers and package exports
+cross_model_comparison = main
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="AFS-VFM Cross-Model Comparative Analysis")
