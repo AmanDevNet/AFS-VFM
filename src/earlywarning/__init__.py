@@ -45,12 +45,28 @@ def __getattr__(name: str) -> Any:
     if name == "learn_thresholds":
         from .learn_thresholds import learn_thresholds
         return learn_thresholds
+    elif name == "LearnedFailurePredictor":
+        from .learned_predictor import LearnedFailurePredictor
+        return LearnedFailurePredictor
+    elif name in ("build_classifier", "prepare_training_dataset", "evaluate_cross_validated_models"):
+        from . import learned_predictor
+        return getattr(learned_predictor, name)
+    elif name in ("TemporalFeatureExtractor", "CORE_FEATURE_NAMES"):
+        from . import feature_extractor
+        return getattr(feature_extractor, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
     "FailurePredictor",
+    "LearnedFailurePredictor",
+    "TemporalFeatureExtractor",
+    "CORE_FEATURE_NAMES",
+    "build_classifier",
+    "prepare_training_dataset",
+    "evaluate_cross_validated_models",
     "learn_thresholds",
     "MODEL_SIGNALS",
     "LEARNED_THRESHOLDS",
 ]
+

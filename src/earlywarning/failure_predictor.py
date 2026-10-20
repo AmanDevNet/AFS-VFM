@@ -25,7 +25,13 @@ class FailurePredictor:
         CRITICAL — One or more signals below critical threshold
     """
 
-    def __init__(self, thresholds_path: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        thresholds_path: Optional[str] = None,
+        mode: str = "heuristic",
+        models_dir: Optional[str] = None,
+    ) -> None:
+        self.mode = mode.lower()
         if thresholds_path is None:
             thresholds_path = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "thresholds.json"
@@ -37,6 +43,31 @@ class FailurePredictor:
             )
         with open(thresholds_path, "r", encoding="utf-8") as f:
             self.thresholds: Dict[str, Any] = json.load(f)
+
+        self.models_dir = models_dir or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "models"
+        )
+        self._learned_predictors: Dict[str, Any] = {}
+
+    def reset(self) -> None:
+        """Reset temporal feature history across all active learned predictors."""
+        for predictor in self._learned_predictors.values():
+            if hasattr(predictor, "reset"):
+                predictor.reset()
+
+    def _get_learned_predictor(self, model_name: str) -> Optional[Any]:
+        """Lazy-load learned predictor for the specified model architecture."""
+        model = model_name.lower()
+        if model in self._learned_predictors:
+            return self._learned_predictors[model]
+
+        model_file = os.path.join(self.models_dir, f"{model}_learned_predictor.joblib")
+        if os.path.exists(model_file):
+            from .learned_predictor import LearnedFailurePredictor
+            predictor = LearnedFailurePredictor.load(model_file)
+            self._learned_predictors[model] = predictor
+            return predictor
+        return None
 
     def assess(self, model_name: str, signals_dict: Dict[str, float]) -> Dict[str, Any]:
         """
@@ -57,6 +88,41 @@ class FailurePredictor:
                 recommendation: str
         """
         model = model_name.lower()
+
+        # If learned mode is enabled, evaluate multivariate machine learning classifier
+        if self.mode in ("learned", "hybrid"):
+            learned_pred = self._get_learned_predictor(model)
+            if learned_pred is not None:
+                model_type = "detection" if model == "detr" else "classification"
+                res = learned_pred.assess(signals_dict, model_type=model_type)
+                # Map imminent hazard to estimated frames to failure
+                if res["status"] == "CRITICAL":
+                    est_frames = 1
+                elif res["status"] == "WARNING":
+                    est_frames = 3
+                else:
+                    est_frames = None
+
+                return {
+                    "status": res["status"],
+                    "failure_probability": res["failure_probability"],
+                    "estimated_frames_to_failure": est_frames,
+                    "triggering_signals": res["triggering_signals"],
+                    "signal_details": res["signal_details"],
+                    "recommendation": res["recommendation"],
+                    "mode": "learned",
+                    "classifier_type": res.get("classifier_type", "gradient_boosting"),
+                }
+            elif self.mode == "learned":
+                return {
+                    "status": "UNKNOWN",
+                    "failure_probability": 0.0,
+                    "estimated_frames_to_failure": None,
+                    "triggering_signals": [],
+                    "signal_details": {},
+                    "recommendation": f"Learned model not found for '{model_name}' in {self.models_dir}",
+                }
+
         if model not in self.thresholds:
             return {
                 "status": "UNKNOWN",
