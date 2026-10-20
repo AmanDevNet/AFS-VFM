@@ -15,7 +15,7 @@ model-inference pipeline.
 import numpy as np
 
 from . import transformations
-from .utils import load_image
+from .utils import load_image, apply_transform_safely
 from .scheduler import SeverityScheduler
 from .compound import CompoundDegradation, COMPOUND_RECIPES
 
@@ -227,10 +227,7 @@ class DegradationPipeline:
 
         for i in range(self.num_frames):
             sev = float(severities[i])
-            if canonical == "occlusion" and eff_transform_params:
-                frames[i] = transform_fn(image, sev, **eff_transform_params)
-            else:
-                frames[i] = transform_fn(image, sev)
+            frames[i] = apply_transform_safely(transform_fn, image, sev, **eff_transform_params)
 
         return frames
 

@@ -24,6 +24,7 @@ import numpy as np
 from typing import Union, Sequence, Dict, Any, List
 
 from . import transformations
+from .utils import apply_transform_safely
 
 
 COMPOUND_RECIPES: Dict[str, List[Dict[str, Any]]] = {
@@ -156,9 +157,6 @@ class CompoundDegradation:
             kwargs = dict(comp.get("params", {}))
             kwargs.update(global_params)
 
-            if comp_type == "occlusion":
-                current = transform_fn(current, comp_sev, **kwargs)
-            else:
-                current = transform_fn(current, comp_sev)
+            current = apply_transform_safely(transform_fn, current, comp_sev, **kwargs)
 
         return current

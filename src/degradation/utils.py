@@ -6,8 +6,9 @@ the degradation pipeline.
 """
 
 import os
+import inspect
 from pathlib import Path
-from typing import Union
+from typing import Union, Callable, Any, Dict
 import cv2
 import numpy as np
 
@@ -77,3 +78,51 @@ def ensure_dimensions(image: np.ndarray, target_h: int, target_w: int) -> np.nda
         image[src_y_start:src_y_start + copy_h, src_x_start:src_x_start + copy_w]
 
     return canvas
+
+
+def apply_transform_safely(
+    transform_fn: Callable[..., np.ndarray],
+    image: np.ndarray,
+    severity: float,
+    **kwargs: Any,
+) -> np.ndarray:
+    """Invoke a degradation transformation function safely with keyword arguments.
+
+    If the function accepts **kwargs (VAR_KEYWORD), all keyword arguments are forwarded.
+    Otherwise, keyword arguments are filtered to match the function's explicit parameter list.
+    If no extra parameters are accepted, invokes ``transform_fn(image, severity)``.
+
+    Parameters
+    ----------
+    transform_fn : Callable
+        Transformation function taking at least (image, severity).
+    image : np.ndarray
+        RGB uint8 array.
+    severity : float
+        Progression severity in [0.0, 1.0].
+    **kwargs : Any
+        Transformation parameter overrides (e.g. mode, texture, alpha).
+
+    Returns
+    -------
+    np.ndarray
+        Transformed image array.
+    """
+    if not kwargs:
+        return transform_fn(image, severity)
+
+    try:
+        sig = inspect.signature(transform_fn)
+        has_var_keyword = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        )
+        if has_var_keyword:
+            return transform_fn(image, severity, **kwargs)
+
+        valid_args = {k: v for k, v in kwargs.items() if k in sig.parameters}
+        if valid_args:
+            return transform_fn(image, severity, **valid_args)
+        return transform_fn(image, severity)
+    except (ValueError, TypeError):
+        return transform_fn(image, severity)
+

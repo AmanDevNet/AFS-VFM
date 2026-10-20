@@ -17,7 +17,7 @@ Public API
 from .degradation import DegradationPipeline, generate_degradation_sequence
 from .scheduler import SeverityScheduler
 from .compound import CompoundDegradation, COMPOUND_RECIPES
-from .utils import load_image, save_image
+from .utils import load_image, save_image, apply_transform_safely
 from .adversarial import AdversarialAttacker
 from .transformations import gaussian_noise, fog_haze, contrast
 
@@ -29,6 +29,7 @@ __all__ = [
     "COMPOUND_RECIPES",
     "load_image",
     "save_image",
+    "apply_transform_safely",
     "AdversarialAttacker",
     "gaussian_noise",
     "fog_haze",
