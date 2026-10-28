@@ -6,7 +6,7 @@
 
 *Systematically stress-testing state-of-the-art AI vision models to discover exactly when — and why — they break.*
 
-> **Research into anticipatory failure signals in vision foundation models — DINOv2 (Base/Large), CLIP, SigLIP, DETR. Targeting BMVC/WACV.**
+> **Note:** Full working state, including test scripts, scratch work and raw outputs. See `main` for the reviewed version.
 
 `computer-vision` • `vision-transformers` • `deep-learning` • `pytorch` • `huggingface` • `research` • `dinov2` • `clip` • `siglip` • `detr` • `robustness` • `early-warning`
 
