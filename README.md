@@ -1,345 +1,226 @@
-<div align="center">
+# AFS-VFM: Anticipatory Failure Signals in Vision Foundation Models
 
-# 🔬 AFS-VFM
-
-### Anticipatory Failure Signals in Vision Foundation Models
-
-*Systematically stress-testing state-of-the-art AI vision models to discover exactly when — and why — they break.*
-
-> **Research into anticipatory failure signals in vision foundation models — DINOv2 (Base/Large), CLIP, SigLIP, DETR. Targeting BMVC/WACV.**
-
-`computer-vision` • `vision-transformers` • `deep-learning` • `pytorch` • `huggingface` • `research` • `dinov2` • `clip` • `siglip` • `detr` • `robustness` • `early-warning`
-
-<br/>
-
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://python.org)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org)
-[![HuggingFace](https://img.shields.io/badge/HuggingFace-Transformers-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Phase%203%20Early%20Warning%20Active-blue)]()
-
-<br/>
-
-**150,000+ model inferences** · **5 foundation models** · **5 core degradations + adversarial & semantic suite** · **1,500 benchmark images**
-
-</div>
+Vision foundation models exhibit measurable internal signal shifts prior to overt behavioral classification or detection failure under environmental degradation. This project empirically benchmarks and analyzes these precursor signals to quantify warning lead times and failure predictability across distinct model architectures.
 
 ---
 
-## 📌 Table of Contents
+## 1. Key Results
 
-- [The Problem](#-the-problem)
-- [Our Approach](#-our-approach)
-- [Supported Foundation Models](#-supported-foundation-models)
-- [System Architecture](#-system-architecture)
-- [Degradation Engine (Track A)](#-degradation-engine--track-a)
-- [Model Inference Pipeline (Track B)](#-model-inference-pipeline--track-b)
-- [Phase 3 Early Warning System](#-phase-3-early-warning-system)
-- [Key Results So Far](#-key-results-so-far)
-- [Project Roadmap](#-project-roadmap)
-- [Tech Stack](#-tech-stack)
-- [Contributors](#-contributors)
+All values reported below are computed directly from the repository's verified evaluation artifacts.
+
+### Benchmark Scale & Dataset
+- **Evaluation Dataset:** 1,500 total base images (1,000 from ImageNet-1K validation, 500 from MS-COCO val2017). *(Source: `results/full_benchmark.csv`)*
+- **Evaluated Architectures:** DINOv2-Base (ViT-B/14, self-supervised), CLIP (ViT-B/32, contrastive language-image), and DETR (ResNet-50 backbone, supervised detection).
+- **Degradation Profiles:** 5 corruption types (motion blur, lighting reduction, occlusion, scale reduction, viewpoint shift) evaluated across 20 severity frames (0% to 100% severity).
+- **Verified Record Count:** Exactly **150,000 rows** in `results/full_benchmark.csv` (1,500 images $\times$ 5 degradations $\times$ 20 frames).
+
+### Model Survival Rates
+Survival denotes preserving the clean-frame (frame 0) prediction across the 20-frame degradation progression. *(Source: `results/phase2a/failure_statistics.csv`)*
+
+| Model | Architecture & Objective | Overall Survival Rate | Blur | Lighting | Occlusion | Scale | Viewpoint |
+|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **DINOv2-Base** | ViT-B/14 (Self-Supervised) | **33.9%** | 35.8% | 42.9% | 51.3% | 0.1% | 39.5% |
+| **CLIP** | ViT-B/32 (Contrastive Vision-Language) | **23.4%** | 34.9% | 30.1% | 24.1% | 3.7% | 24.0% |
+| **DETR** | ResNet-50 + Transformer (Supervised) | **16.5%** | 9.5% | 23.8% | 14.4% | 0.0% | 34.7% |
+
+*Associated visualization: `results/figures/fig1_robustness_heatmap.png`*
+
+### Pre-Failure Trajectory Trend
+Across all evaluated models and internal feature signals, **83.2%** of pre-failure observation windows display a negative signal slope (downward trajectory) prior to the first behavioral failure frame. *(Source: `results/phase2c/phase2c_report.txt`, `results/phase2c/prefailure_window_stats.csv`)*
+
+*Associated visualization: `results/figures/fig3_signal_trajectory.png`*
+
+### Predictability & Warning Lead Time
+Lead time reflects the mean number of frames between an anticipatory signal crossing a 2-standard-deviation warning threshold and the occurrence of behavioral failure. *(Source: `results/phase2c/predictability_metrics.csv`)*
+
+| Model | Evaluated Signal | AUROC | Mean Lead Time (Frames) |
+|:---|:---|:---:|:---:|
+| **CLIP** | Logit Margin ($\Delta \text{logit}_{1-2}$) | **0.822** | **3.8** |
+| **CLIP** | Top-1 Confidence Score | **0.817** | **3.8** |
+| **DETR** | Top Detection Confidence | **0.816** | **3.4** |
+| **DINOv2-Base** | Top-1 Confidence Score | **0.773** | **4.2** |
+| **DINOv2-Base** | Logit Margin ($\Delta \text{logit}_{1-2}$) | **0.771** | **4.2** |
+| **DINOv2-Base** | Latent Cosine Similarity | **0.519** | **4.8** |
+| **CLIP** | Latent Cosine Similarity | **0.380** | **4.8** |
+
+*Associated visualization: `results/figures/fig4_auroc_comparison.png`*
+
+### Earliest Statistically Significant Signal Divergence
+Evaluating the divergence of internal signals between surviving and failing trajectories via two-sided Mann-Whitney U testing *(Source: `results/phase2c/phase2c_report.txt`, `results/phase2c/survived_vs_failed.csv`)*:
+- **DINOv2-Base:** Internal feature divergence reaches statistical significance at **Frame 2** (10.5% degradation severity; Cohen's $d = 0.315$, $p = 1.98 \times 10^{-10}$).
+- **CLIP:** Internal confidence divergence reaches statistical significance at **Frame 5** (26.3% degradation severity; Cohen's $d = -0.126$, $p = 2.45 \times 10^{-2}$).
+- **DETR:** Shows no statistically significant divergence prior to failure under baseline configuration ($p > 0.05$).
+
+*Associated visualization: `results/figures/fig6_divergence_timeline.png`*
 
 ---
 
-## 🧠 The Problem
+## 2. Caveats & Scope of Baseline Results
 
-Vision Foundation Models (VFMs) like **DINOv2**, **CLIP**, **SigLIP**, and **DETR** achieve near-perfect accuracy on clean benchmark datasets. But the real world is messy — camera lenses get dirty, lighting drops, objects move, perspectives shift.
-
-> **At what exact point does a state-of-the-art AI vision model stop *seeing* and start *guessing*?**
-
-Current robustness benchmarks (ImageNet-C, COCO-C) test models at discrete corruption levels. They tell you *that* a model failed — but not *when* the internal signal crossed the tipping point. **AFS-VFM** fills that gap by isolating anticipatory signals that precede failure.
-
----
-
-## 🎯 Our Approach
-
-Instead of testing models on a single corrupted image, we generate a **20-frame temporal degradation sequence** where corruption intensity increases linearly from **0% to 100%**. This allows us to pinpoint the **exact frame** where each model's prediction transitions from correct to incorrect — the **failure boundary**.
-
-We compare five architecturally distinct foundation models across diverse pre-training paradigms:
-
-## 🤖 Supported Foundation Models
-
-| Model | Architecture | Task | Paradigm | Dimensions / Head |
-|-------|-------------|------|----------|-------------------|
-| **DINOv2-Base** (`facebook/dinov2-base-imagenet1k-1-layer`) | ViT-B/14 | Image Classification | Self-Supervised Learning | 768-d |
-| **DINOv2-Large** (`facebook/dinov2-large-imagenet1k-1-layer`) | ViT-L/14 | Image Classification | Self-Supervised Learning | 1024-d |
-| **CLIP** (`openai/clip-vit-base-patch32`) | ViT-B/32 + Text Transformer | Zero-Shot Classification | Contrastive (Softmax) | 512-d |
-| **SigLIP** (`google/siglip-base-patch16-224`) | ViT-B/16 + Text Transformer | Zero-Shot Classification | Pairwise Sigmoid BCE | 768-d |
-| **DETR** (`facebook/detr-resnet-50`) | ResNet-50 + Transformer Decoder | Object Detection | Bipartite Matching Loss | 256-d |
+> **Important Evaluation Scope Note:**  
+> The baseline CLIP metrics reported above (including AUROC 0.822) were computed using a restricted 20-candidate label subset (`CLIP_CANDIDATE_LABELS` in legacy evaluation; Audit Item L10). This restricted label space constrains the softmax competition and inflates confidence values relative to a full classification benchmark.  
+> 
+> A corrected full 1,000-class ImageNet-1K evaluation pipeline utilizing pre-computed text embeddings across 80 prompt templates has been implemented in `src/models/clip_imagenet1k.py` and validated in `tests/verify_clip_1000.py`. **The baseline AUROC table in `results/phase2c/predictability_metrics.csv` was computed BEFORE this 1,000-class fix was implemented.** Re-evaluation on the full class set is currently scheduled as part of the 10,000-image benchmark run.
 
 ---
 
-## 🏗 System Architecture
+## 3. Project Status
 
-The pipeline operates in two parallel tracks with a clean handshake protocol:
+| Milestone / Component | Current Status | Details |
+|:---|:---:|:---|
+| **1,500-Image Baseline Benchmark** | **Complete** | 150,000 rows across 3 models and 5 degradations (`results/full_benchmark.csv`). |
+| **10,000-Image Scaled Benchmark** | **In Progress** | Distributed sharding framework operational. Shard 0 of 20 complete (500 images, 50,000 rows in `results/shards/shard_000_of_020.csv`). No pooled 10k results claimed. |
+| **Learned Multi-Signal Predictor** | **Implemented (Evaluation Pending)** | Tabular models (Gradient Boosting, Random Forest, MLP) implemented in `src/earlywarning/learned_predictor.py`. Systematic test-set AUROC evaluation on full data pending. |
+| **Research Manuscript** | **In Preparation** | Target submission for peer review. |
+
+---
+
+## 4. Method Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        AFS-VFM BENCHMARK PIPELINE                       │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   ┌───────────────────────────────────────────┐                         │
-│   │       TRACK A: Degradation Engine         │                         │
-│   │                                           │                         │
-│   │   Input Image ──► DegradationPipeline     │                         │
-│   │                     │                     │                         │
-│   │       ┌─────────────┼─────────────┐       │                         │
-│   │       ▼             ▼             ▼       │                         │
-│   │   Motion Blur   Occlusion    Lighting     │                         │
-│   │       ▼             ▼             ▼       │                         │
-│   │     Scale      Viewpoint                  │                         │
-│   │       │             │                     │                         │
-│   │       └─────────────┼─────────────┘       │                         │
-│   │                     ▼                     │                         │
-│   │   Output: NumPy Array (20, H, W, 3)       │                         │
-│   └───────────────────┬───────────────────────┘                         │
-│                       │                                                 │
-│              ─── Handshake Protocol ───                                  │
-│                       │                                                 │
-│   ┌───────────────────▼───────────────────────┐                         │
-│   │       TRACK B: Inference Pipeline         │                         │
-│   │                                           │                         │
-│   │   Frame[0] ──► Establish Baseline         │                         │
-│   │   Frame[N] ──► Run DINOv2 / CLIP / DETR   │                         │
-│   │              ──► Compare to Baseline       │                         │
-│   │              ──► Record is_failure         │                         │
-│   │                     │                     │                         │
-│   │   Output: CSV with failure annotations     │                         │
-│   └───────────────────────────────────────────┘                         │
-│                                                                         │
-│   ┌───────────────────────────────────────────┐                         │
-│   │       INFRASTRUCTURE                      │                         │
-│   │   • Crash-safe CSV checkpointing          │                         │
-│   │   • Auto-resume on restart                │                         │
-│   │   • Batch splitting (3 × 500 images)      │                         │
-│   │   • Kaggle/Colab T4 GPU compatible        │                         │
-│   └───────────────────────────────────────────┘                         │
-└─────────────────────────────────────────────────────────────────────────┘
+Input Image (Frame 0: Clean)
+       │
+       ▼
+Degradation Engine (Linear / Non-Linear / Compound) ──► 20-Frame Severity Sequence
+       │
+       ▼
+Model Forward Passes (DINOv2, CLIP, DETR)
+       ├──► Behavioral Outputs (Class Prediction, Bounding Boxes) ──► Failure Boundaries
+       └──► Internal Signal Probing (Confidence, Margin, Latent Drift, Entropy)
+              │
+              ▼
+Anticipatory Early Warning Predictors (Heuristic Thresholds / CUSUM / Learned Classifiers)
 ```
+
+1. **Environmental Degradation Sequences:** Images undergo continuous degradation across 20 discrete frames parameterized from 0% (unmodified original) to 100% severity.
+2. **Behavioral Failure Tracking:** The model's clean prediction (Frame 0) defines the reference identity. Behavioral failure is identified at the earliest frame where prediction changes.
+3. **Internal Signal Probing:** Multi-layer internal signals are logged at each frame:
+   - Output decisiveness: Top-1 confidence, top 1-vs-2 logit margin, prediction entropy.
+   - Representation geometry: Cosine similarity and $L_2$ distance of image embeddings relative to Frame 0.
+4. **Early Warning Detection:** Anticipatory signals are monitored to trigger warnings when deviating beyond baseline stability intervals, yielding lead times prior to behavioral breakdown.
 
 ---
 
-## ⚙️ Degradation Engine — Track A
+## 5. Reproduction & Quickstart
 
-A **deterministic**, **reproducible** image corruption engine built from scratch. No randomness — the same input always produces the same output, which is essential for scientific reproducibility.
-
-Each degradation type is designed to target a specific failure mode that vision models encounter in real-world deployment:
-
-| # | Degradation | Real-World Scenario | Algorithm | Severity Range |
-|---|-------------|-------------------|-----------|---------------|
-| 1 | **Motion Blur** | Camera shake, moving objects | Horizontal convolution kernel (`cv2.filter2D`) | Kernel: 1 → 51 px |
-| 2 | **Occlusion** | Objects blocking the field of view | Deterministic black rectangular patches | Coverage: 0% → 40% |
-| 3 | **Lighting** | Nighttime, shadows, underexposure | RGB brightness + contrast scaling | Brightness: 100% → 5% |
-| 4 | **Scale** | Low resolution, distance from camera | Downsample + nearest-neighbor upsample | Resolution: 100% → 2% |
-| 5 | **Viewpoint** | Camera tilt, perspective distortion | Perspective warp (`cv2.warpPerspective`) | Pinch: 0% → 40% |
-
-### Design Principles
-
-- **Frame 0 Guarantee**: The first frame is always pixel-identical to the original image — this is the clean baseline for all model comparisons
-- **Linear Severity**: Severity scales from `0.0` to `1.0` across 20 frames (5.26% per frame), making it straightforward to correlate signal changes with known corruption levels
-- **Resolution Preservation**: All frames maintain the original image dimensions
-- **Minimal Dependencies**: The engine uses only OpenCV and NumPy — no deep learning frameworks required
-
----
-
-## 🤖 Model Inference Pipeline — Track B
-
-Three vision foundation models are loaded via HuggingFace Transformers and evaluated in PyTorch inference mode:
-
-```python
-# DINOv2 — Classification via self-supervised features
-outputs = dinov2_model(**processor(images=frame, return_tensors="pt"))
-prediction = model.config.id2label[outputs.logits.argmax(-1).item()]
-
-# CLIP — Zero-shot reasoning against 20 candidate labels
-outputs = clip_model(**processor(text=labels, images=frame, return_tensors="pt"))
-prediction = labels[outputs.logits_per_image.softmax(dim=1).argmax(-1).item()]
-
-# DETR — Object detection with confidence scoring
-outputs = detr_model(**processor(images=frame, return_tensors="pt"))
-prediction = model.config.id2label[logits.softmax(-1).max(dim=1)[1][best_det].item()]
-```
-
-### Failure Detection Logic
-
-1. **Frame 0** → Run all 3 models → Store each model's prediction as its **baseline**
-2. **Frames 1–19** → Run all 3 models → Compare each prediction against its baseline
-3. **`is_failure = True`** when the model's prediction **diverges** from the baseline
-
-This captures the exact moment each model's internal reasoning breaks under increasing visual stress.
-
----
-
-## 📊 Key Results So Far
-
-### Phase 1 — Data Generation: ✅ Complete
-
-We successfully processed **1,500 validation images** (500 from COCO val2017 + 1,000 from ImageNet-1k) across all 5 degradation types and generated exactly **150,000 model inferences** (1,500 × 5 × 20 frames captured at each of the 3 model outputs).
-
-#### Early Observations (Week 2 — Motion Blur on DINOv2)
-
-From our initial single-feature integration test:
-
-| Frame | Severity | DINOv2 Prediction | Status |
-|-------|----------|-------------------|--------|
-| 1 | 0% | `analog clock` | ✅ Baseline |
-| 2 | 5% | `chain mail` | ❌ **First failure** |
-| 6 | 26% | `window screen` | ❌ Drifting |
-| 9–20 | 42–100% | `ruler` | ❌ Locked on wrong class |
-
-> **Key Insight**: DINOv2 failed at just **5% degradation intensity** under motion blur — indicating extreme sensitivity to high-frequency spatial features. The model didn't gradually lose confidence; it **snapped** to a completely wrong class almost immediately.
-
-### Phase 2 — Statistical Analysis & Failure Mapping: ✅ Complete
-
-We extracted **90,000 internal brain signals** (logits, embeddings, confidence scores) and calculated exact failure boundaries across all models.
-
-#### Breakthrough Discoveries
-
-1. **DINOv2 is the Most Robust:** Across all 5 degradation types, DINOv2 survived the longest (33.9% average survival), outperforming CLIP (23.4%) and DETR (16.5%).
-2. **Anticipatory Signals Exist (Hypothesis Proven):** We mathematically proved that internal model signals drop **2 to 5 frames BEFORE** the model's final prediction actually changes.
-3. **Failure is Predictable:** By analyzing specific internal metrics (like logit margins and cosine embedding shifts), we predict imminent AI failure with high statistical significance before output corruption occurs.
-
----
-
-## ⚡ Phase 3 Early Warning System: ✅ Active
-
-The Phase 3 early warning system continuously monitors internal foundation model health during visual degradation and raises alerts prior to task-level failure:
-
-```
-  Clean Visual Stream
-           │
-           ▼
-  Internal Signal Extraction (Confidence, Logit Margins, Cosine Drift)
-           │
-           ▼
-  Threshold Predictor (Learned via ROC/AUC on empirical failure trajectories)
-           │
-     ┌─────┴──────────────┐
-     ▼                    ▼
-  [OK]            [WARNING / CRITICAL]
-  (Healthy)       (2–4 frames BEFORE prediction divergence)
-```
-
-### Running the Early Warning Demo
-
-Run the interactive multi-model simulation across all 5 foundation models:
-
+### Environment Setup
+Clone the repository and install dependencies:
 ```bash
-# Run demo for all 5 foundation models
-python -m src.earlywarning.demo --models dinov2 clip detr siglip dinov2_large
-
-# Run regression test suite
-python verify_early_warning.py
+git clone https://github.com/AmanSharma-1/AFS-VFM.git
+cd AFS-VFM
+pip install -r requirements.txt
 ```
 
-### Running Benchmark with Flexible Model Selection
-
+### Smoke Test (No Dataset Download Required)
+Verify the installation and core pipeline using the bundled sample data:
 ```bash
-# Quick pilot test on a subset of images
-python main.py --pilot --models dinov2 clip siglip
+python tests/test_smoke.py
+```
 
-# Run specific batch with all 5 models
-python main.py --batch 1 --models dinov2 dinov2_large clip siglip detr
+### Running Individual Benchmark Shards
+The benchmark dataset is partitioned into 20 deterministic shards of 500 images each. To run an individual shard (e.g., shard 0):
+```bash
+python main.py --shard_id 0 --num_shards 20
+```
+
+Completed shard CSVs are merged into the consolidated benchmark via:
+```bash
+python merge_shards.py --input_dir results/shards --output results/full_benchmark_10k.csv
 ```
 
 ---
 
-## 🗺 Project Roadmap
+## 6. Repository Map
 
-```text
-Phase 1 — Infrastructure & Data Generation ███████████████████████████████ 100%  ✅
-Phase 2 — Statistical Analysis & Failure Mapping ███████████████████████████████ 100%  ✅
-Phase 3 — Early Warning System & Paper ███████████████████████████████  85%   🚀
 ```
-
-| Phase | Milestone | Status | Description |
-|-------|-----------|--------|-------------|
-| **1.1** | Degradation Engine | ✅ Complete | 5-type deterministic corruption engine + semantic/adversarial extensions |
-| **1.2** | Model Loader | ✅ Complete | Dynamic loading for DINOv2 (Base/Large), CLIP, SigLIP, DETR |
-| **1.3** | Integration Test | ✅ Complete | End-to-end pipeline validation (Track A ↔ Track B) |
-| **1.4** | Full Benchmark Run | ✅ Complete | 150,000+ inferences across 1,500 images |
-| **2.1** | Failure Boundary Analysis | ✅ Complete | Dynamic model discovery and per-degradation breaking points |
-| **2.2** | Cross-Model Comparison | ✅ Complete | Statistical comparison across self-supervised, contrastive, and detection paradigms |
-| **2.3** | Internal Signal Probing | ✅ Complete | Embedding drift, attention entropy, logit margin analysis |
-| **3.1** | Visualization Dashboard | ✅ Complete | Publication-quality timeline figures and early warning overlays |
-| **3.2** | Early Warning Prototype | ✅ Complete | Multi-model health predictor with calibrated threshold trigger engine |
-| **3.3** | Research Paper | 📝 In Progress | Formal write-up for BMVC/WACV submission |
-
----
-
-## 🛠 Tech Stack
-
-| Category | Technologies |
-|----------|-------------|
-| **Language** | Python 3.10+ |
-| **Deep Learning** | PyTorch 2.0+, HuggingFace Transformers |
-| **Models** | Meta DINOv2, OpenAI CLIP (ViT-B/32), Meta DETR (ResNet-50) |
-| **Computer Vision** | OpenCV, NumPy, Pillow |
-| **Datasets** | COCO val2017, ImageNet-1k (via HuggingFace Datasets) |
-| **Compute** | Kaggle T4 GPU (free tier), Google Colab compatible |
-| **Version Control** | Git, GitHub (multi-contributor workflow with feature branches) |
-
----
-
-## 👥 Contributors
-
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/AmanDevNet">
-        <img src="https://github.com/AmanDevNet.png" width="120px;" alt="Aman Sharma"/><br />
-        <b>Aman Sharma</b>
-      </a><br />
-      <a href="https://www.linkedin.com/in/aman-sharma-842b66318"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=flat&logo=linkedin&logoColor=white" alt="LinkedIn"/></a><br />
-      <sub>Lead Author</sub><br />
-      <sub>
-        Degradation Engine Architecture · Model Inference Integration ·<br/>
-        Batch Processing Infrastructure · Dataset Pipeline · Orchestration
-      </sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/angeltaneja">
-        <img src="https://github.com/angeltaneja.png" width="120px;" alt="Angel Taneja"/><br />
-        <b>Angel Taneja</b>
-      </a><br />
-      <a href="https://www.linkedin.com/in/angel-taneja-140b45263"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=flat&logo=linkedin&logoColor=white" alt="LinkedIn"/></a><br />
-      <sub>Co-Author</sub><br />
-      <sub>
-        Research Paper Authoring · Visualization & Analytics ·<br/>
-        Testing · DINOv2/CLIP/DETR Integration · Failure Detection Logic · Quality Assurance · Code Review
-      </sub>
-    </td>
-  </tr>
-</table>
-
----
-
-## 📄 License
-
-This project is open-sourced under the [MIT License](LICENSE).
-
----
-
-## 🔗 Citation
-
-If you find this work useful in your research, please consider citing:
-
-```bibtex
-@misc{sharma2026afsvfm,
-  title   = {AFS-VFM: Anticipatory Failure Signals in Vision Foundation Models},
-  author  = {Sharma, Aman and Taneja, Angel},
-  year    = {2026},
-  url     = {https://github.com/AmanDevNet/AFS-VFM}
-}
+AFS-VFM/
+├── src/                               # Core source modules
+│   ├── degradation/                  # Degradation operators, non-linear schedules, compound chains
+│   │   ├── adversarial.py            # Untargeted PGD and atmospheric synthesis
+│   │   ├── compound.py               # Multi-stress degradation pipelines
+│   │   ├── degradation.py            # Primary 20-frame sequence generation engine
+│   │   ├── scheduler.py              # Linear, exponential, logarithmic, sigmoid, step schedules
+│   │   └── transformations.py        # Core spatial and photometric transforms (blur, lighting, smudge)
+│   ├── earlywarning/                 # Anticipatory signal monitoring and prediction
+│   │   ├── failure_predictor.py      # Threshold-based predictor and CUSUM hazard detector
+│   │   ├── feature_extractor.py      # 8-dimensional dynamic trajectory feature engineering
+│   │   ├── learned_predictor.py      # Multi-signal machine learning classifier wrappers
+│   │   ├── models/                   # Serialized predictor weights (joblib)
+│   │   └── thresholds.json           # Calibrated empirical warning thresholds
+│   ├── models/                       # Model loading and representation extraction
+│   │   ├── clip_imagenet1k.py        # 1,000-class zero-shot ImageNet evaluator with cached text embeddings
+│   │   ├── model_loader.py           # Unified loader for DINOv2, CLIP, DETR, SigLIP, DINOv2-Large
+│   │   └── signal_extractor.py       # Internal feature, margin, entropy, and cosine drift extractor
+│   ├── data/                         # Dataset utilities and class mappings
+│   ├── utils/                        # Logging and runtime utilities
+│   └── visualization/                # Figure generation and plotting scripts
+├── tests/                             # Unit tests and limitation verification scripts
+│   ├── test_smoke.py                 # Smoke test on bundled sample data
+│   ├── verify_adversarial_and_semantic.py # PGD and weather transform verification
+│   ├── verify_clip_1000.py           # 1,000-class CLIP evaluation verification
+│   ├── verify_compound.py            # Multi-stress compound degradation verification
+│   ├── verify_detr_fix.py            # DETR dual-representation pooling and drift verification
+│   ├── verify_early_warning.py       # Threshold-based early warning verification
+│   ├── verify_learned_early_warning.py # Learned classifier inference verification
+│   ├── verify_model_diversity.py     # SigLIP and DINOv2-Large loader verification
+│   ├── verify_occlusion.py           # Translucent organic smudge verification
+│   ├── verify_phase2b.py             # Internal signal extraction verification
+│   └── verify_schedules.py           # Severity schedule verification
+├── sample_data/                       # Sample images and benchmark slice for smoke testing
+│   ├── images/                       # 5 representative test images (clean and degraded)
+│   └── sample_benchmark.csv          # 20-row sample trajectory
+├── results/                           # Verified empirical evaluation outputs
+│   ├── full_benchmark.csv            # 150,000-row baseline evaluation table
+│   ├── shards/                       # Distributed shard outputs (shard_000_of_020.csv)
+│   ├── figures/                      # Evaluated and cited benchmark figures
+│   ├── phase2a/                      # Failure statistics, transition matrices, and boundary tests
+│   ├── phase2b/                      # Internal signal extractions (frame_signals.csv)
+│   ├── phase2c/                      # Predictability metrics, lead times, and divergence tests
+│   └── phase2d/                      # Cross-model correlations and architectural synthesis
+├── docs/                              # Technical documentation
+│   └── AUDIT.md                      # Code-grounded limitations and resolution audit matrix
+├── main.py                            # Primary benchmark execution script with sharding support
+├── merge_shards.py                    # Shard aggregation utility
+├── requirements.txt                   # Minimal pinned project dependencies
+└── LICENSE                            # MIT License
 ```
 
 ---
 
-<div align="center">
+## 7. Limitations & Open Challenges
 
-**🔬 Research in Progress — Phase 3 (Visualization & Early Warning Prototype) currently underway.**
+A detailed audit of all repository limitations is maintained in [`docs/AUDIT.md`](docs/AUDIT.md). Key items include:
 
-*Built with curiosity, broken models, and too many GPU hours.*
+| Item | Focus Area | Status | Summary |
+|:---|:---|:---:|:---|
+| **L1** | Adversarial & Semantic Stresses | **Solved** | Implemented PGD and atmospheric weather generation. |
+| **L2** | Severity Progression Schedules | **Solved** | Added 5 non-linear severity schedules. |
+| **L3** | Realistic Occlusion | **Solved** | Implemented translucent organic smudges with alpha blending. |
+| **L4** | Compound Degradations | **Solved** | Implemented multi-stress degradation pipelines. |
+| **L5** | Model Architecture Diversity | **Solved** | Extended loaders to support SigLIP and DINOv2-Large. |
+| **L6** | Benchmark Scaling (10k images) | **In Progress** | Shard 0 of 20 verified (50,000 rows); Shards 1–19 queued. |
+| **L7** | DETR Embedding & Drift Tracking | **Solved** | Implemented dual-representation spatial and query pooling. |
+| **L8** | Learned Multi-Signal Predictor | **Solved** | Tabular classifiers implemented; benchmark evaluation pending. |
+| **L9** | Temporal Change-Point Modeling | **Solved** | Integrated CUSUM hazard detection. |
+| **L10** | CLIP 1,000-Class Generalization | **Solved** | Implemented full ImageNet-1K cached text pipeline. Baseline metrics reflect legacy 20-label subset. |
 
-</div>
+---
+
+## 8. Safety & Alignment Relevance
+
+Safety-critical autonomous systems rely on vision models operating under variable, out-of-distribution real-world conditions. Standard deployments treat these models as black boxes that either output a correct prediction or fail silently without advance notice.
+
+This research demonstrates that internal representation geometry and output decisiveness metrics show detectable degradation several steps before overt behavioral classification failure occurs. Developing reliable internal-state monitoring mechanisms provides a principled foundation for runtime out-of-distribution detection, failure warning, and automated fail-safe handovers to backup systems or human operators.
+
+---
+
+## 9. Authors & Contact
+
+- **Aman Sharma** (Lead Researcher) — `amansharma9373@gmail.com`
+- **Angel Taneja** (Co-Author)
+
+---
+
+## License
+
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.

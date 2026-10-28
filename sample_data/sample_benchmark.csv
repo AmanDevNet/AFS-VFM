@@ -1,0 +1,21 @@
+image,dataset,degradation,frame,severity_pct,dinov2_prediction,dinov2_failure,clip_prediction,clip_failure,detr_prediction,detr_failure
+000000000885.jpg,coco,blur,1,0,"racket, racquet",False,fruit,False,person,False
+000000000885.jpg,coco,blur,2,5,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,3,10,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,4,15,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,5,21,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,6,26,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,7,31,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,8,36,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,9,42,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,10,47,"racket, racquet",False,a person,True,tennis racket,True
+000000000885.jpg,coco,blur,11,52,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,12,57,"racket, racquet",False,a person,True,tennis racket,True
+000000000885.jpg,coco,blur,13,63,"racket, racquet",False,a person,True,tennis racket,True
+000000000885.jpg,coco,blur,14,68,"racket, racquet",False,a person,True,tennis racket,True
+000000000885.jpg,coco,blur,15,73,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,16,78,tennis ball,True,a person,True,person,False
+000000000885.jpg,coco,blur,17,84,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,18,89,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,19,94,"racket, racquet",False,a person,True,person,False
+000000000885.jpg,coco,blur,20,100,"racket, racquet",False,a person,True,car,True
