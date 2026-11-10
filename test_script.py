@@ -21,7 +21,7 @@ IMG_H, IMG_W = 256, 256
 NUM_FRAMES = 20
 TEST_IMAGE_PATH = os.path.join(os.path.dirname(__file__), "_test_image.png")
 
-DEGRADATION_TYPES = ["blur"]
+DEGRADATION_TYPES = ["blur", "lighting", "occlusion", "scale", "viewpoint"]
 
 
 def create_test_image() -> None:
