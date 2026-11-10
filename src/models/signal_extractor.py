@@ -32,8 +32,12 @@ class SignalExtractor:
         inputs = processor(images=frame_pil, return_tensors="pt").to(self.device)
 
         with torch.no_grad():
-            # Single forward pass with hidden states
-            outputs = model(**inputs, output_hidden_states=True)
+            # Single forward pass with both hidden states and attentions
+            try:
+                outputs = model(**inputs, output_hidden_states=True, output_attentions=True)
+            except Exception:
+                outputs = model(**inputs, output_hidden_states=True)
+
             logits = outputs.logits[0]  # (num_classes,)
 
             # CLS embedding from last hidden state
@@ -51,18 +55,17 @@ class SignalExtractor:
         top1_conf = float(top5_logits[0])
         logit_margin = float(top5_logits[0] - top5_logits[1])
 
-        # Attention entropy: skip if model doesn't support it
+        # Attention entropy from single forward pass (skip if unsupported)
         avg_entropy = 0.0
-        try:
-            attn_outputs = model(**inputs, output_attentions=True)
-            last_attn = attn_outputs.attentions[-1].cpu().numpy()[0]  # (heads, seq, seq)
-            cls_attn = last_attn[:, 0, :]  # CLS row
-            cls_attn_safe = np.clip(cls_attn, 1e-10, None)
-            entropy_per_head = -np.sum(cls_attn_safe * np.log(cls_attn_safe), axis=-1)
-            avg_entropy = float(np.mean(entropy_per_head))
-        except Exception:
-            # Some model configs don't support output_attentions
-            avg_entropy = 0.0
+        if hasattr(outputs, "attentions") and outputs.attentions is not None:
+            try:
+                last_attn = outputs.attentions[-1].cpu().numpy()[0]  # (heads, seq, seq)
+                cls_attn = last_attn[:, 0, :]  # CLS row
+                cls_attn_safe = np.clip(cls_attn, 1e-10, None)
+                entropy_per_head = -np.sum(cls_attn_safe * np.log(cls_attn_safe), axis=-1)
+                avg_entropy = float(np.mean(entropy_per_head))
+            except Exception:
+                avg_entropy = 0.0
 
         prediction = top5_labels[0]
 
