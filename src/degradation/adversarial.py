@@ -278,14 +278,18 @@ class AdversarialAttacker:
         h, w = base_arr.shape[:2]
         frames = np.empty((num_frames, h, w, 3), dtype=np.uint8)
 
-        attack_fn = self.pgd_feature_attack if attack_type.lower() == "pgd" else self.fgsm_feature_attack
+        attack_key = attack_type.lower().strip()
+        if attack_key not in ("pgd", "fgsm"):
+            raise ValueError(
+                f"Unsupported attack_type '{attack_type}'. Expected one of: 'pgd', 'fgsm'."
+            )
 
         for i in range(num_frames):
             sev = float(severities[i])
             if sev <= 0.0:
                 frames[i] = base_arr.copy()
             else:
-                if attack_type.lower() == "pgd":
+                if attack_key == "pgd":
                     frames[i] = self.pgd_feature_attack(model, base_arr, severity=sev, steps=steps, max_eps=max_eps)
                 else:
                     frames[i] = self.fgsm_feature_attack(model, base_arr, severity=sev, max_eps=max_eps)
