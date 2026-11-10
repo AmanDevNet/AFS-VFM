@@ -11,7 +11,7 @@ Usage
 >>> model, processor = loader.load_dinov2()
 """
 
-from typing import Tuple, Any
+from typing import Tuple, Any, Optional, Union
 import torch
 from transformers import (
     AutoImageProcessor,
@@ -53,8 +53,11 @@ class VisionModelLoader:
         The device models are loaded onto.
     """
 
-    def __init__(self) -> None:
-        self.device = get_device()
+    def __init__(self, device: Optional[Union[str, torch.device]] = None) -> None:
+        if device is not None:
+            self.device = torch.device(device)
+        else:
+            self.device = get_device()
         print(f"[ModelLoader] Using device: {self.device}")
 
     # ── DINOv2-Base (Image Classification) ──────────────────────────────
