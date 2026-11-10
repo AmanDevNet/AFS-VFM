@@ -89,6 +89,8 @@ def merge_and_validate_shards(
         deduped_rows = len(merged)
         if deduped_rows < initial_rows:
             print(f"Removed {initial_rows - deduped_rows:,} duplicate rows.")
+        # Ensure deterministic row ordering across all shards
+        merged = merged.sort_values(by=key_cols, ignore_index=True)
 
     # Integrity check: count frames per image
     if "image" in merged.columns:
@@ -104,7 +106,7 @@ def merge_and_validate_shards(
 
     # Save merged dataset
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    merged.to_csv(output_path, index=False)
+    merged.to_csv(output_path, index=False, encoding="utf-8")
     file_size_mb = os.path.getsize(output_path) / (1024 * 1024)
 
     print("\n" + "=" * 72)
