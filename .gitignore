@@ -38,8 +38,10 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Testing and coverage artifacts
+# Testing, linter, and coverage artifacts
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
