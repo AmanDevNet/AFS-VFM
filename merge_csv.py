@@ -34,7 +34,10 @@ def merge_csvs(
     resolved_files = []
     if files:
         for f in files:
-            path = f if os.path.isabs(f) else os.path.join(results_dir, f)
+            if os.path.isabs(f) or os.path.exists(f):
+                path = f
+            else:
+                path = os.path.join(results_dir, f)
             resolved_files.append(path)
     elif pattern:
         search_path = pattern if os.path.isabs(pattern) else os.path.join(results_dir, pattern)
@@ -82,7 +85,7 @@ def merge_csvs(
             print(f"  Deduplicated: removed {initial_len - len(combined):,} duplicate rows")
 
     os.makedirs(os.path.dirname(os.path.abspath(out_file)), exist_ok=True)
-    combined.to_csv(out_file, index=False)
+    combined.to_csv(out_file, index=False, encoding="utf-8")
 
     print("\n" + "=" * 60)
     print("  MERGE COMPLETE")
