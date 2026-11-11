@@ -36,10 +36,22 @@ COCO_ZIP_URL = "http://images.cocodataset.org/zips/val2017.zip"
 COCO_ZIP_PATH = os.path.join(DATA_DIR, "val2017.zip")
 
 
+def _count_valid_images(directory: str) -> int:
+    """Count non-empty image files in a directory."""
+    if not os.path.isdir(directory):
+        return 0
+    return sum(
+        1 for f in os.listdir(directory)
+        if f.lower().endswith((".jpg", ".jpeg", ".png"))
+        and os.path.getsize(os.path.join(directory, f)) > 0
+    )
+
+
 def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DIR):
     """Download COCO val2017, extract, and sample images."""
-    if os.path.isdir(out_dir) and len(os.listdir(out_dir)) >= sample_count:
-        print(f"  [SKIP] COCO already has {len(os.listdir(out_dir))} images in {out_dir}")
+    existing = _count_valid_images(out_dir)
+    if existing >= sample_count:
+        print(f"  [SKIP] COCO already has {existing} valid images in {out_dir}")
         return True
 
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -88,9 +100,12 @@ def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DI
         print(f"  FAILED to extract: {exc}")
         return False
 
-    # Sample images
+    # Sample images (filtering out any empty/corrupted files)
     print(f"  Sampling {sample_count} images ...")
-    all_images = [f for f in os.listdir(extract_dir) if f.endswith(".jpg")]
+    all_images = [
+        f for f in os.listdir(extract_dir)
+        if f.endswith(".jpg") and os.path.getsize(os.path.join(extract_dir, f)) > 0
+    ]
     sampled = random.sample(all_images, min(sample_count, len(all_images)))
 
     os.makedirs(out_dir, exist_ok=True)
@@ -112,8 +127,9 @@ def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DI
 
 def download_imagenet(sample_count: int = DEFAULT_IMAGENET_COUNT, out_dir: str = IMAGENET_DIR, per_class_limit: int = 5):
     """Download ImageNet-1k validation split and sample images with stratification."""
-    if os.path.isdir(out_dir) and len(os.listdir(out_dir)) >= sample_count:
-        print(f"  [SKIP] ImageNet already has {len(os.listdir(out_dir))} images in {out_dir}")
+    existing = _count_valid_images(out_dir)
+    if existing >= sample_count:
+        print(f"  [SKIP] ImageNet already has {existing} valid images in {out_dir}")
         return True
 
     try:
@@ -172,6 +188,12 @@ def download_imagenet(sample_count: int = DEFAULT_IMAGENET_COUNT, out_dir: str =
         filename = f"imagenet_{count:06d}_class{label}.jpg"
         filepath = os.path.join(out_dir, filename)
         image.save(filepath, "JPEG", quality=95)
+        if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            count -= 1
+            class_counts[label] -= 1
+            continue
 
         if count % 100 == 0:
             print(f"    Saved {count}/{sample_count} ...")
