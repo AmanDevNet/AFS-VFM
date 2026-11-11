@@ -132,7 +132,8 @@ class TemporalFeatureExtractor:
         cos_history = [h["cosine_sim"] for h in self.history]
 
         roll_mean_conf = float(np.mean(conf_history))
-        roll_std_conf = float(np.std(conf_history)) if len(conf_history) > 1 else 0.0
+        raw_std = float(np.std(conf_history)) if len(conf_history) > 1 else 0.0
+        roll_std_conf = max(0.0, float(np.nan_to_num(raw_std, nan=0.0)))
         roll_mean_cos = float(np.mean(cos_history))
 
         features = np.array([
@@ -150,7 +151,7 @@ class TemporalFeatureExtractor:
             roll_mean_cos,
         ], dtype=np.float32)
 
-        return features
+        return np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
 
     @classmethod
     def extract_batch(
@@ -219,7 +220,7 @@ class TemporalFeatureExtractor:
 
         # Rolling window stats (window=3, ddof=0 to match numpy streaming std)
         data["rolling_mean_confidence"] = grouped["confidence"].rolling(window=3, min_periods=1).mean().reset_index(level=list(range(len(group_cols))), drop=True)
-        data["rolling_std_confidence"] = grouped["confidence"].rolling(window=3, min_periods=1).std(ddof=0).fillna(0.0).reset_index(level=list(range(len(group_cols))), drop=True)
+        data["rolling_std_confidence"] = grouped["confidence"].rolling(window=3, min_periods=1).std(ddof=0).fillna(0.0).clip(lower=0.0).reset_index(level=list(range(len(group_cols))), drop=True)
         data["rolling_mean_cosine_sim"] = grouped["cosine_sim"].rolling(window=3, min_periods=1).mean().reset_index(level=list(range(len(group_cols))), drop=True)
 
         return data
