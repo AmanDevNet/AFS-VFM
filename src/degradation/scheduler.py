@@ -177,9 +177,13 @@ class SeverityScheduler:
             Severity at and after shock frame (default 0.85).
         """
         if num_frames == 1:
-            return np.array([post_shock], dtype=np.float64)
+            return np.clip(np.array([post_shock], dtype=np.float64), 0.0, 1.0)
         if shock_frame is None:
             shock_frame = num_frames // 2
+        if shock_frame < 0 or shock_frame >= num_frames:
+            raise ValueError(
+                f"shock_frame ({shock_frame}) must be within [0, {num_frames - 1}]"
+            )
 
         curve = np.full(num_frames, pre_shock, dtype=np.float64)
         curve[shock_frame:] = post_shock
