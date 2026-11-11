@@ -219,6 +219,11 @@ class FailurePredictor:
         Assess a full trajectory (list of signal dicts across frames).
         Returns per-frame assessments and identifies the first warning frame.
         """
+        if self.mode in ("learned", "hybrid"):
+            learned_pred = self._get_learned_predictor(model_name.lower())
+            if learned_pred is not None:
+                learned_pred.reset()
+
         results = []
         first_warning = None
         first_critical = None
