@@ -205,8 +205,9 @@ class ImageNet1KZeroShotEvaluator:
                 logits = similarity * self.logit_scale
                 probs = F.softmax(logits, dim=-1)
 
-            # Top-5 extraction
-            top5_probs_t, top5_indices_t = probs[0].topk(5)
+            # Top-k extraction (safe for subsets with fewer than 5 classes)
+            k = min(5, probs.shape[-1])
+            top5_probs_t, top5_indices_t = probs[0].topk(k)
             top5_probs = top5_probs_t.cpu().numpy()
             top5_indices = top5_indices_t.cpu().numpy()
             top5_labels = [self.class_names[idx] for idx in top5_indices]
