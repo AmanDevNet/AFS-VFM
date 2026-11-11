@@ -39,12 +39,16 @@ def save_image(path: Union[str, Path], image: np.ndarray) -> None:
     Args:
         path: Destination file path.
         image: NumPy array of shape (H, W, 3) with dtype uint8, in RGB order.
+
+    Raises:
+        IOError: If OpenCV fails to write the image to disk.
     """
     dest_dir = os.path.dirname(os.path.abspath(str(path)))
     if dest_dir:
         os.makedirs(dest_dir, exist_ok=True)
     bgr_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(str(path), bgr_image)
+    if not cv2.imwrite(str(path), bgr_image):
+        raise IOError(f"Failed to write image to disk: {path}")
 
 
 def ensure_dimensions(image: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
