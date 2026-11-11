@@ -60,7 +60,7 @@ def download_sample_image() -> str:
     """Download a sample image or create a synthetic fallback."""
     os.makedirs(DATA_DIR, exist_ok=True)
 
-    if os.path.exists(SAMPLE_IMAGE_PATH):
+    if os.path.exists(SAMPLE_IMAGE_PATH) and os.path.getsize(SAMPLE_IMAGE_PATH) > 0:
         print(f"  Using existing sample image: {SAMPLE_IMAGE_PATH}")
         return SAMPLE_IMAGE_PATH
 
@@ -81,16 +81,16 @@ def download_sample_image() -> str:
 def create_synthetic_image(path: str) -> None:
     """Create a colorful 512x512 synthetic image as a reproducible fallback."""
     h, w = 512, 512
-    img = np.zeros((h, w, 3), dtype=np.uint8)
 
-    # Smooth color gradients
-    for y in range(h):
-        for x in range(w):
-            img[y, x] = [
-                int(255 * x / w),
-                int(255 * y / h),
-                int(128 + 64 * np.sin(x * 0.05)),
-            ]
+    # Smooth color gradients (vectorized)
+    xs = np.arange(w, dtype=np.float32)
+    ys = np.arange(h, dtype=np.float32)
+    xx, yy = np.meshgrid(xs, ys)
+    img = np.stack([
+        (255.0 * xx / w).astype(np.uint8),
+        (255.0 * yy / h).astype(np.uint8),
+        (128.0 + 64.0 * np.sin(xx * 0.05)).astype(np.uint8),
+    ], axis=-1)
 
     # Geometric structures
     bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
