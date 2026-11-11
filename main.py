@@ -367,7 +367,11 @@ def run_benchmark(
                             pred = infer_detr(m_model, m_proc, frame_pil, device)
                         else:
                             pred = "UNKNOWN_MODEL"
-                    except Exception:
+                    except Exception as exc:
+                        print(
+                            f"     [WARN] {m.upper()} inference exception on "
+                            f"{img_file} ({deg_type} frame {frame_idx + 1}): {exc}"
+                        )
                         pred = "ERROR"
 
                     if frame_idx == 0:
