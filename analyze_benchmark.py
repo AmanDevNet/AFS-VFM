@@ -43,7 +43,15 @@ def analyze_benchmark(input_path: str = None, save_report: str = None, models: l
         raise FileNotFoundError(f"Specified benchmark CSV not found: {input_path}")
 
     print(f"Loading benchmark data from: {input_path}")
-    df = pd.read_csv(input_path)
+    try:
+        df = pd.read_csv(input_path)
+    except pd.errors.EmptyDataError:
+        print(f"  [ERROR] Benchmark CSV is empty (0 bytes): {input_path}")
+        return
+
+    if df.empty:
+        print(f"  [ERROR] Benchmark CSV contains no data rows: {input_path}")
+        return
 
     active_models = discover_models(df, models)
 
