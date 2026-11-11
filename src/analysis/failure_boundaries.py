@@ -90,8 +90,8 @@ def extract_failure_boundaries(
             if fail_col not in group.columns:
                 continue
 
-            # Find rows where this model failed
-            failures = group[group[fail_col] == True]
+            # Find rows where this model failed (handles both boolean and string flags)
+            failures = group[group[fail_col].astype(str).str.lower() == "true"]
 
             if len(failures) == 0:
                 # Model survived all 20 frames
@@ -115,6 +115,13 @@ def extract_failure_boundaries(
                     "first_failure_severity_pct": int(first["severity_pct"]),
                     "survived": False,
                 })
+
+    if not records:
+        print("         0 triplets analyzed (no matching model failure columns found)")
+        return pd.DataFrame(columns=[
+            "image", "dataset", "degradation", "model",
+            "first_failure_frame", "first_failure_severity_pct", "survived",
+        ])
 
     result = pd.DataFrame(records)
     n_total = len(result)
