@@ -51,6 +51,9 @@ def select_strategic_subset(
     print("  Phase 2B - Strategic Image Subset Selection")
     print("=" * 60)
 
+    if not os.path.exists(boundaries_path):
+        raise FileNotFoundError(f"Failure boundaries CSV not found: {boundaries_path}")
+
     fb = pd.read_csv(boundaries_path)
     print(f"\n  Loaded {len(fb):,} boundary records")
     print(f"  Unique images: {fb['image'].nunique()}")
@@ -58,6 +61,8 @@ def select_strategic_subset(
     # Filter to specified models if provided
     if models is not None and len(models) > 0:
         fb = fb[fb["model"].isin(models)].copy()
+        if fb.empty:
+            raise ValueError(f"No boundary records matched requested models: {list(models)}")
 
     # Pivot: one row per (image, degradation), columns = model failure frames
     pivot = fb.pivot_table(
@@ -152,7 +157,7 @@ def main():
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     out_path = os.path.join(OUTPUT_DIR, "selected_images.csv")
-    subset.to_csv(out_path, index=False)
+    subset.to_csv(out_path, index=False, encoding="utf-8")
     print(f"\n  Saved to: {out_path}")
 
     # Also save just the image filenames
