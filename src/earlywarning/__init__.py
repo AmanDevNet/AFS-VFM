@@ -35,7 +35,7 @@ if os.path.exists(_THRESHOLDS_PATH):
     try:
         with open(_THRESHOLDS_PATH, "r", encoding="utf-8") as _f:
             LEARNED_THRESHOLDS: Dict[str, Any] = json.load(_f)
-    except Exception:
+    except (ImportError, OSError, json.JSONDecodeError, ValueError):
         LEARNED_THRESHOLDS = {}
 else:
     LEARNED_THRESHOLDS = {}
