@@ -20,6 +20,7 @@ Canonical Benchmark Recipes:
    3D perspective/viewpoint shear + motion blur (high-speed camera jitter).
 """
 
+import copy
 import numpy as np
 from typing import Union, Sequence, Dict, Any, List
 
@@ -89,7 +90,7 @@ class CompoundDegradation:
         if isinstance(spec, str):
             spec_key = spec.lower().strip()
             if spec_key in COMPOUND_RECIPES:
-                return [dict(c) for c in COMPOUND_RECIPES[spec_key]]
+                return copy.deepcopy(COMPOUND_RECIPES[spec_key])
             elif "+" in spec_key:
                 parts = [p.strip() for p in spec_key.split("+") if p.strip()]
                 return [{"type": p, "weight": 1.0} for p in parts]
@@ -101,8 +102,10 @@ class CompoundDegradation:
             if isinstance(item, str):
                 components.append({"type": item.lower().strip(), "weight": 1.0})
             elif isinstance(item, dict):
-                comp = dict(item)
-                comp["type"] = comp["type"].lower().strip()
+                if "type" not in item or not str(item["type"]).strip():
+                    raise ValueError(f"Component dict must contain a non-empty 'type' key: {item}")
+                comp = copy.deepcopy(item)
+                comp["type"] = str(comp["type"]).lower().strip()
                 comp.setdefault("weight", 1.0)
                 components.append(comp)
             else:
