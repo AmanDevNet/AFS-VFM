@@ -28,6 +28,9 @@ def motion_blur(image: np.ndarray, severity: float) -> np.ndarray:
     Returns:
         Blurred image with the same shape and dtype.
     """
+    # Clamp severity to valid [0, 1] range for safety
+    severity = float(np.clip(severity, 0.0, 1.0))
+
     # At severity 0 → kernel_size 1 (identity), severity 1 → 51
     kernel_size = int(1 + severity * 50)  # 1 → 51
     if kernel_size % 2 == 0:
