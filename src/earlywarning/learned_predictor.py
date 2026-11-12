@@ -76,12 +76,13 @@ class LearnedFailurePredictor:
         X = feature_vector.reshape(1, -1)
         if hasattr(self.classifier, "predict_proba"):
             probs = self.classifier.predict_proba(X)
-            return float(probs[0, 1])
+            return float(np.clip(probs[0, 1], 0.0, 1.0))
         elif hasattr(self.classifier, "decision_function"):
-            score = self.classifier.decision_function(X)[0]
-            return float(1.0 / (1.0 + np.exp(-score)))
+            score = float(self.classifier.decision_function(X)[0])
+            clipped_neg_score = float(np.clip(-score, -500.0, 500.0))
+            return float(1.0 / (1.0 + np.exp(clipped_neg_score)))
         else:
-            return float(self.classifier.predict(X)[0])
+            return float(np.clip(self.classifier.predict(X)[0], 0.0, 1.0))
 
     def assess(
         self,
@@ -155,6 +156,8 @@ class LearnedFailurePredictor:
     @classmethod
     def load(cls, filepath: str) -> "LearnedFailurePredictor":
         """Load serialized predictor bundle."""
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Serialized predictor bundle not found: {filepath}")
         payload = joblib.load(filepath)
         return cls(
             classifier=payload["classifier"],
