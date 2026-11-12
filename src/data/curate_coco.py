@@ -57,14 +57,14 @@ def curate_coco(num_images=500, target_size=(224, 224), out_dir=None):
                 img_url,
                 headers={'User-Agent': 'Mozilla/5.0'}
             )
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 img_data = response.read()
             
             # Convert raw byte to image
             image = Image.open(BytesIO(img_data))
         
         except Exception as e:
-            print(f"Skipping image {img_id} due to error")
+            print(f"Skipping image {img_id} due to error: {e}")
             continue
         
         if image.mode != 'RGB':
