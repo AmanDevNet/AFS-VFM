@@ -38,15 +38,15 @@ def build_simulated_trajectory(model: str, n_frames: int = 20):
             mdata = pd.DataFrame()
 
     failure_frame = int(n_frames * 0.65)  # e.g., frame 13 of 20
+    rng = np.random.default_rng(42 + sum(ord(c) for c in model))
 
     # If model is DETR, or data is missing/empty, synthesize a trajectory
     if model == "detr" or mdata.empty:
-        np.random.seed(42 + abs(hash(model)) % 1000)
         trajectory = []
         for frame in range(1, n_frames + 1):
             rel = (frame - failure_frame) / 4.0
             sig_factor = 1.0 / (1.0 + np.exp(rel * 2.0))  # sigmoid drop around failure
-            noise = float(np.random.normal(0, 0.015))
+            noise = float(rng.normal(0, 0.015))
 
             if model == "detr":
                 conf = float(np.clip(0.20 + 0.65 * sig_factor + noise, 0.05, 0.95))
@@ -85,7 +85,7 @@ def build_simulated_trajectory(model: str, n_frames: int = 20):
                 if mean_col in first_row.columns and not first_row.empty:
                     val = first_row[mean_col].values[0]
                     if not np.isnan(val):
-                        base[sig] = float(val) + np.random.normal(0, 0.01)
+                        base[sig] = float(val) + float(rng.normal(0, 0.01))
             trajectory.append(base if base else {"top1_confidence": 0.8})
         else:
             last_row = mdata[mdata["relative_frame"] == 5]
@@ -95,7 +95,7 @@ def build_simulated_trajectory(model: str, n_frames: int = 20):
                 if mean_col in last_row.columns and not last_row.empty:
                     val = last_row[mean_col].values[0]
                     if not np.isnan(val):
-                        base[sig] = float(val) + np.random.normal(0, 0.01)
+                        base[sig] = float(val) + float(rng.normal(0, 0.01))
             trajectory.append(base if base else {"top1_confidence": 0.3})
 
     return trajectory, failure_frame
