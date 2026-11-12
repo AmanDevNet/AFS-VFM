@@ -65,7 +65,7 @@ def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DI
             req = urllib.request.Request(COCO_ZIP_URL, headers={
                 "User-Agent": "AFS-VFM-Research/1.0"
             })
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=60) as response:
                 total = int(response.headers.get("Content-Length", 0))
                 downloaded = 0
                 with open(COCO_ZIP_PATH, "wb") as f:
