@@ -29,6 +29,8 @@ MODEL_SIGNALS = {
 
 def _optimal_threshold(values, labels, n_candidates=200):
     """Find threshold that maximises F1 for 'signal < threshold => failure'."""
+    if values.size == 0 or np.all(np.isnan(values)):
+        return 0.0, 0.0
     lo, hi = np.nanmin(values), np.nanmax(values)
     candidates = np.linspace(lo, hi, n_candidates)
     best_f1, best_thr = 0.0, float(lo)
