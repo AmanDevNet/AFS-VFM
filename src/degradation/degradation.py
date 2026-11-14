@@ -12,6 +12,7 @@ The module is designed for reuse: another developer can import
 model-inference pipeline.
 """
 
+from typing import Optional
 import numpy as np
 
 from . import transformations
@@ -73,14 +74,14 @@ class DegradationPipeline:
         self,
         num_frames: int = 20,
         schedule: str = "linear",
-        schedule_params: dict = None,
-        transform_params: dict = None,
+        schedule_params: Optional[dict] = None,
+        transform_params: Optional[dict] = None,
     ) -> None:
         self.num_frames = num_frames
         self.schedule = schedule
         self.schedule_params = schedule_params or {}
         self.transform_params = transform_params or {}
-        self.last_severities: np.ndarray = None
+        self.last_severities: Optional[np.ndarray] = None
 
     # ── Thin wrapper methods (for discoverability / IDE hints) ──────────
 
