@@ -385,6 +385,15 @@ class SignalExtractor:
 
     @staticmethod
     def top5_overlap(labels_a: list, labels_b: list) -> float:
+        """Compute normalized set overlap between two top-5 predicted label lists.
+
+        Args:
+            labels_a: First list of top-k label predictions.
+            labels_b: Second list of top-k label predictions.
+
+        Returns:
+            Normalized Jaccard/intersection overlap ratio in [0.0, 1.0].
+        """
         set_a = set(labels_a)
         set_b = set(labels_b)
         if not set_a or not set_b:
