@@ -125,7 +125,7 @@ def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DI
 
 # ── ImageNet-1k validation (via HuggingFace datasets) ───────────────────────
 
-def download_imagenet(sample_count: int = DEFAULT_IMAGENET_COUNT, out_dir: str = IMAGENET_DIR, per_class_limit: int = 5):
+def download_imagenet(sample_count: int = DEFAULT_IMAGENET_COUNT, out_dir: str = IMAGENET_DIR, per_class_limit: int = 5) -> bool:
     """Download ImageNet-1k validation split and sample images with stratification."""
     existing = _count_valid_images(out_dir)
     if existing >= sample_count:
