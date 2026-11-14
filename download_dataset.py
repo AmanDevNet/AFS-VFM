@@ -47,7 +47,7 @@ def _count_valid_images(directory: str) -> int:
     )
 
 
-def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DIR):
+def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DIR) -> bool:
     """Download COCO val2017, extract, and sample images."""
     existing = _count_valid_images(out_dir)
     if existing >= sample_count:
@@ -75,7 +75,7 @@ def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DI
                             break
                         f.write(chunk)
                         downloaded += len(chunk)
-                        if total > 0:
+                        if total and total > 0:
                             pct = int(downloaded / total * 100)
                             mb = downloaded / (1024 * 1024)
                             print(f"\r  Progress: {mb:.0f} MB ({pct}%)", end="", flush=True)
@@ -125,7 +125,7 @@ def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DI
 
 # ── ImageNet-1k validation (via HuggingFace datasets) ───────────────────────
 
-def download_imagenet(sample_count: int = DEFAULT_IMAGENET_COUNT, out_dir: str = IMAGENET_DIR, per_class_limit: int = 5):
+def download_imagenet(sample_count: int = DEFAULT_IMAGENET_COUNT, out_dir: str = IMAGENET_DIR, per_class_limit: int = 5) -> bool:
     """Download ImageNet-1k validation split and sample images with stratification."""
     existing = _count_valid_images(out_dir)
     if existing >= sample_count:

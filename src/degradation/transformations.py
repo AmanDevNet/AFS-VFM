@@ -94,6 +94,7 @@ def occlusion(
     """
     if severity <= 0.0:
         return image.copy()
+    severity = min(1.0, float(severity))
 
     h, w = image.shape[:2]
     # Deterministic pseudo-random generator tied strictly to severity
