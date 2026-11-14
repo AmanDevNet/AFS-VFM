@@ -47,7 +47,7 @@ def _count_valid_images(directory: str) -> int:
     )
 
 
-def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DIR):
+def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DIR) -> bool:
     """Download COCO val2017, extract, and sample images."""
     existing = _count_valid_images(out_dir)
     if existing >= sample_count:
