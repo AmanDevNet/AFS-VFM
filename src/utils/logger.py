@@ -93,7 +93,7 @@ class BenchmarkTimer:
             self.logger.log(self.log_level, f"Starting {self.task_name} ...")
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._end_time = time.perf_counter()
         self.elapsed_seconds = self._end_time - self._start_time
         if self.logger:
