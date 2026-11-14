@@ -75,7 +75,7 @@ def download_coco(sample_count: int = DEFAULT_COCO_COUNT, out_dir: str = COCO_DI
                             break
                         f.write(chunk)
                         downloaded += len(chunk)
-                        if total > 0:
+                        if total and total > 0:
                             pct = int(downloaded / total * 100)
                             mb = downloaded / (1024 * 1024)
                             print(f"\r  Progress: {mb:.0f} MB ({pct}%)", end="", flush=True)
